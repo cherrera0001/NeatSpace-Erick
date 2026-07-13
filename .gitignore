@@ -1,0 +1,27 @@
+# Dependencias
+node_modules/
+dist/
+build/
+.cache/
+
+# Entornos / secretos
+.env
+.env.*
+*.local
+
+# Editor / SO
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Artefactos generados desde los specs (código, clientes, docs HTML)
+/generated/
+/gen/
+openapi.html
+asyncapi.html
+
+# Logs
+*.log
+npm-debug.log*

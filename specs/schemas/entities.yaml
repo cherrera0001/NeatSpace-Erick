@@ -1,0 +1,276 @@
+# NeatSpace — Modelo de datos canónico (JSON Schema)
+# Fuente de verdad de las entidades del dominio. Derivado de:
+#   docs/01-Arquitectura-NeatSpace.md §1.3 (modelo relacional)
+#   docs/04-NeatWallet.md §2–3 (ledger de partida doble)
+#   docs/05-Trust-Score.md §10 (proyección + captura)
+#
+# Convenciones:
+#   - Los montos son enteros en CLP (sin decimales).
+#   - Marcas: [APPEND-ONLY] = sin UPDATE/DELETE; [PROYECCION] = recomputable desde un log.
+#   - x-source apunta al documento/sección de diseño.
+
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://specs.neatspace.cl/entities.yaml
+title: NeatSpace Entities
+type: object
+
+$defs:
+
+  # ─────────────────────────── Identidad / Perfil ──────────────────────────
+  Usuario:
+    x-source: doc 01 §1.3
+    type: object
+    required: [id, email, creado_en]
+    properties:
+      id: { type: string }
+      email: { type: string, format: email }
+      estado: { type: string, enum: [activo, suspendido] }
+      nivel_verificacion: { type: integer, description: 'Identidad Verificada (Pilar I, Cap. 74)' }
+      creado_en: { type: string, format: date-time }
+
+  NeatProfile:
+    x-source: doc 01 §1.3, doc 05 §10
+    description: Currículum vivo; 1—1 con Usuario. Unidad de reputación.
+    type: object
+    required: [id, usuario_id]
+    properties:
+      id: { type: string }
+      usuario_id: { type: string }
+      descripcion: { type: string }
+      habilidades: { type: array, items: { type: string } }
+      cobertura_geo: { $ref: '#/$defs/GeoAprox' }
+
+  Empresa:
+    x-source: doc 01 §1.3 (NeatBusiness)
+    type: object
+    properties:
+      id: { type: string }
+      razon_social: { type: string }
+      wallet_id: { type: string, description: 'Billetera corporativa 1—1' }
+
+  Categoria:
+    x-source: doc 01 §3.3, doc 02 §4.2
+    type: object
+    properties:
+      id: { type: string }
+      nombre: { type: string }
+      parent_id: { type: [string, 'null'] }
+      nivel: { type: integer }
+      sensible: { type: boolean, description: 'Exige verificación reforzada' }
+
+  # ────────────────────────────── Oportunidades ────────────────────────────
+  Oportunidad:
+    x-source: doc 01 §1.3, doc 02
+    type: object
+    required: [id, tipo, categoria_id, estado]
+    properties:
+      id: { type: string }
+      cliente_id: { type: string }
+      tipo: { type: string, enum: [urgent, scheduled], description: 'INMUTABLE' }
+      categoria_id: { type: string }
+      estado: { type: string, enum: [publicado, tomada, cerrada, sin_cobertura] }
+      geo_aprox: { $ref: '#/$defs/GeoAprox' }
+      direccion_texto: { type: [string, 'null'], description: 'Exacta; revelada sólo con acuerdo aceptado/urgente asignado' }
+      precio_ref: { type: integer }
+      convertida_desde_id: { type: [string, 'null'], description: 'Fallback SinCobertura (doc 02 §7)' }
+      creado_en: { type: string, format: date-time }
+
+  OportunidadRecurrente:
+    x-source: doc 01 §1.3 (Cap. 37)
+    type: object
+    properties:
+      id: { type: string }
+      cliente_id: { type: string }
+      periodicidad: { type: string, description: 'schedule/cron de generación' }
+
+  AceptacionUrgente:
+    x-source: doc 01 §3.1 (Flujo A), doc 00 §4
+    description: Entidad auditable de la asignación atómica (primero-gana). [APPEND-ONLY]
+    type: object
+    properties:
+      id: { type: string }
+      oportunidad_id: { type: string }
+      profesional_id: { type: string }
+      creado_en: { type: string, format: date-time }
+
+  MatchImpression:
+    x-source: doc 02 §4.4, §6.4
+    description: Contador server-side de impresiones en shortlist real (ventana 14 días). [APPEND-ONLY]
+    type: object
+    properties:
+      id: { type: string }
+      profesional_id: { type: string }
+      categoria_id: { type: string }
+      zona: { type: string }
+      creado_en: { type: string, format: date-time }
+
+  # ────────────────────────────── Sala de Acuerdo ──────────────────────────
+  Acuerdo:
+    x-source: doc 03
+    type: object
+    required: [id, oportunidad_id, estado]
+    properties:
+      id: { type: string }
+      oportunidad_id: { type: string, description: 'FK UQ — 0..1 (doc 01 §1.2)' }
+      estado:
+        type: string
+        enum: [ABIERTA, PROPUESTA, PAGO_FALLIDO, ACORDADO, EN_EJECUCION, ENTREGADO, EN_DISPUTA, CERRADO, CANCELADO, EXPIRADO]
+      version_vigente_n: { type: [integer, 'null'] }
+      aceptado_cliente: { type: boolean }
+      aceptado_profesional: { type: boolean }
+      ttl_vence: { type: [string, 'null'], format: date-time, description: 'Según modo (doc 03 R8)' }
+
+  AcuerdoVersion:
+    x-source: doc 03 §4
+    description: Snapshot inmutable de términos. [APPEND-ONLY]
+    type: object
+    properties:
+      acuerdo_id: { type: string }
+      n: { type: integer }
+      terminos: { $ref: '#/$defs/Terminos' }
+      aceptado_cliente_en: { type: [string, 'null'], format: date-time }
+      aceptado_profesional_en: { type: [string, 'null'], format: date-time }
+      metodo_verificacion: { type: [string, 'null'], enum: [pin, biometria, otro, null] }
+      creado_en: { type: string, format: date-time }
+
+  Terminos:
+    type: object
+    properties:
+      precio: { type: integer }
+      duracion: { type: string }
+      materiales: { type: [string, 'null'] }
+      responsabilidades: { type: [string, 'null'] }
+      condiciones: { type: [string, 'null'] }
+
+  PriceOffer:
+    x-source: doc 03 §5 (Precio Justo)
+    description: Cadena de ofertas con justificación. [APPEND-ONLY]
+    type: object
+    properties:
+      id: { type: string }
+      acuerdo_id: { type: string }
+      autor_id: { type: string }
+      monto: { type: integer }
+      justificacion: { type: string, description: 'Obligatoria' }
+      creado_en: { type: string, format: date-time }
+
+  Mensaje:
+    x-source: doc 01 §1.4, doc 03 §7
+    type: object
+    properties:
+      id: { type: string }
+      acuerdo_id: { type: string }
+      autor_id: { type: string }
+      texto: { type: string }
+      leido: { type: boolean, description: 'Flag acotado (excepción declarada, doc 01 §1.4)' }
+      creado_en: { type: string, format: date-time }
+
+  # ─────────────────────────── NeatWallet (dinero) ─────────────────────────
+  Neatwallet:
+    x-source: doc 04 §2
+    description: Cuenta del plan de cuentas. Identidad XOR (usuario | empresa | sistema).
+    type: object
+    required: [id, tipo]
+    properties:
+      id: { type: string }
+      tipo: { type: string, enum: [usuario, empresa, sistema] }
+      usuario_id: { type: [string, 'null'] }
+      empresa_id: { type: [string, 'null'] }
+      rol_sistema:
+        type: [string, 'null']
+        enum: [escrow, comision, pasarela, reembolsos, recupero, costo_psp, null]
+      moneda: { type: string, default: CLP }
+      creado_en: { type: string, format: date-time }
+    # CHECK ( num_nonnull(usuario_id, empresa_id, rol_sistema) = 1 )
+
+  Transaccion:
+    x-source: doc 04 §3
+    description: Agrupador de partida doble. Invariante Σ débitos = Σ créditos.
+    type: object
+    required: [id, tipo, idempotency_key]
+    properties:
+      id: { type: string }
+      tipo: { type: string, enum: [topup, retencion, liberacion, reembolso, reverso, retiro] }
+      referencia_dominio: { type: string, description: 'servicio_id | pago_id | retiro_id' }
+      idempotency_key: { type: string, description: 'UNIQUE' }
+      creado_en: { type: string, format: date-time }
+
+  LedgerEntry:
+    x-source: doc 04 §3
+    description: Asiento contable. [APPEND-ONLY] — sin UPDATE/DELETE.
+    type: object
+    required: [id, transaccion_id, wallet_id, direccion, monto]
+    properties:
+      id: { type: string }
+      transaccion_id: { type: string }
+      wallet_id: { type: string }
+      direccion: { type: string, enum: [debito, credito] }
+      monto: { type: integer, minimum: 1 }
+      concepto: { type: string }
+      creado_en: { type: string, format: date-time }
+
+  Pago:
+    x-source: doc 04 §6
+    description: Intento de pago; su estado lo fija el webhook de MercadoPago (fuente de verdad).
+    type: object
+    properties:
+      id: { type: string }
+      mp_payment_id: { type: [string, 'null'] }
+      estado: { type: string, enum: [pendiente, confirmado, fallido, reembolsado, contracargo] }
+      monto: { type: integer }
+      creado_en: { type: string, format: date-time }
+
+  # ────────────────────────────── Reputación ───────────────────────────────
+  Evaluacion:
+    x-source: doc 05 §10
+    description: Captura de la evaluación. UQ(servicio_id, evaluador_id). Inmutable al enviar.
+    type: object
+    required: [id, servicio_id, evaluador_id, evaluado_id, estrellas]
+    properties:
+      id: { type: string }
+      servicio_id: { type: string }
+      evaluador_id: { type: string }
+      evaluado_id: { type: string }
+      estrellas: { type: integer, minimum: 1, maximum: 5 }
+      atributos: { type: object, additionalProperties: { type: boolean } }
+      comentario: { type: [string, 'null'], description: 'Moderado + PII-limpio antes de visible' }
+      visible: { type: boolean, default: false, description: 'double-blind' }
+      creado_en: { type: string, format: date-time }
+
+  ReputationLog:
+    x-source: doc 05 §3, doc 01 §1.4
+    description: Log append-only encadenado por hash. [APPEND-ONLY]
+    type: object
+    required: [id, usuario_id, evento, hash_actual]
+    properties:
+      id: { type: string }
+      usuario_id: { type: string }
+      evento: { type: string, enum: [evaluacion, sancion, verificacion, apelacion, decay] }
+      payload: { type: object, additionalProperties: true }
+      evaluacion_id: { type: [string, 'null'] }
+      hash_prev: { type: [string, 'null'] }
+      hash_actual: { type: string, description: 'H(hash_prev ‖ payload)' }
+      creado_en: { type: string, format: date-time }
+
+  TrustScore:
+    x-source: doc 05 §4, §10
+    description: '[PROYECCION] Recomputable desde ReputationLog. Nunca un campo seteable.'
+    type: object
+    properties:
+      neatprofile_id: { type: string }
+      valor_0_100: { type: integer, minimum: 0, maximum: 100 }
+      valor_bayesiano: { type: number }
+      atributos_0_100: { type: object, additionalProperties: { type: integer } }
+      n_evaluaciones: { type: integer }
+      nivel_verificacion: { type: integer }
+      recalculado_en: { type: string, format: date-time }
+
+  # ───────────────────────────────── Común ─────────────────────────────────
+  GeoAprox:
+    description: Geolocalización aproximada (nunca la dirección exacta en feed).
+    type: object
+    properties:
+      lat_aprox: { type: number }
+      lng_aprox: { type: number }
+      zona: { type: string }
+      radio_m: { type: integer }

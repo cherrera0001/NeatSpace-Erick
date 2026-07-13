@@ -1,0 +1,246 @@
+asyncapi: 3.0.0
+info:
+  title: NeatSpace — Eventos de Dominio
+  version: 0.1.0
+  description: |
+    Contrato asíncrono de NeatSpace. Cada módulo del monolito modular
+    (`identidad`, `oportunidades`, `neatmatch`, `sala_acuerdo`, `neatwallet`,
+    `reputacion`, `comunicacion`, `conflictos`, `neatbusiness`, `neatai`) publica
+    eventos de dominio y nunca accede a las tablas de otro módulo (doc 01 §2.2).
+
+    Estos eventos son también la columna vertebral del **event sourcing**: el
+    `ReputationLog` (doc 05 §3) y el ledger de NeatWallet (doc 04 §3) son logs
+    append-only de los que se derivan las proyecciones (Trust Score, saldo).
+
+    Trazabilidad: cada canal lleva `x-source` al documento de diseño.
+
+defaultContentType: application/json
+
+servers:
+  broker:
+    host: broker.neatspace.cl
+    protocol: amqp
+    description: Bus de eventos (placeholder — Redis/streams o AMQP, a fijar en implementación)
+
+channels:
+  oportunidadCreada:
+    address: oportunidad.creada
+    messages: { OportunidadCreada: { $ref: '#/components/messages/OportunidadCreada' } }
+    x-source: doc 01 §3.1, doc 02 §consume
+  oportunidadTomada:
+    address: oportunidad.tomada
+    messages: { OportunidadTomada: { $ref: '#/components/messages/OportunidadTomada' } }
+    x-source: doc 01 §3.1 (Flujo A), doc 00 §4
+  profesionalDisponibleCambio:
+    address: profesional.disponible.cambio
+    messages: { ProfesionalDisponibleCambio: { $ref: '#/components/messages/ProfesionalDisponibleCambio' } }
+    x-source: doc 02 §consume
+  acuerdoAceptado:
+    address: acuerdo.aceptado
+    messages: { AcuerdoAceptado: { $ref: '#/components/messages/AcuerdoAceptado' } }
+    x-source: doc 03 §10, doc 01 §2.2
+  retencionEscrowFallida:
+    address: escrow.retencion.fallida
+    messages: { RetencionEscrowFallida: { $ref: '#/components/messages/RetencionEscrowFallida' } }
+    x-source: doc 03 §10 (PAGO_FALLIDO), doc 04 §4
+  direccionRevelada:
+    address: acuerdo.direccion.revelada
+    messages: { DireccionRevelada: { $ref: '#/components/messages/DireccionRevelada' } }
+    x-source: doc 03 §10, §2
+  trabajoEntregado:
+    address: servicio.entregado
+    messages: { TrabajoEntregado: { $ref: '#/components/messages/TrabajoEntregado' } }
+    x-source: doc 03 §10
+  acuerdoCancelado:
+    address: acuerdo.cancelado
+    messages: { AcuerdoCancelado: { $ref: '#/components/messages/AcuerdoCancelado' } }
+    x-source: doc 03 §10, §12
+  acuerdoExpirado:
+    address: acuerdo.expirado
+    messages: { AcuerdoExpirado: { $ref: '#/components/messages/AcuerdoExpirado' } }
+    x-source: doc 03 §12
+  servicioPagado:
+    address: servicio.pagado
+    messages: { ServicioPagado: { $ref: '#/components/messages/ServicioPagado' } }
+    x-source: doc 01 §2.2, doc 04 §5
+  escrowLiberado:
+    address: escrow.liberado
+    messages: { EscrowLiberado: { $ref: '#/components/messages/EscrowLiberado' } }
+    x-source: doc 04 §5.3
+  reembolsoEmitido:
+    address: escrow.reembolso.emitido
+    messages: { ReembolsoEmitido: { $ref: '#/components/messages/ReembolsoEmitido' } }
+    x-source: doc 04 §5.4, §5.5
+  contracargoRecibido:
+    address: pago.contracargo
+    messages: { ContracargoRecibido: { $ref: '#/components/messages/ContracargoRecibido' } }
+    x-source: doc 04 §5.6, §6.5
+  evaluacionEnviada:
+    address: reputacion.evaluacion.enviada
+    messages: { EvaluacionEnviada: { $ref: '#/components/messages/EvaluacionEnviada' } }
+    x-source: doc 01 §2.2, doc 05 §2
+  servicioFinalizado:
+    address: servicio.finalizado
+    messages: { ServicioFinalizado: { $ref: '#/components/messages/ServicioFinalizado' } }
+    x-source: doc 02 §consume, doc 01 §3.1
+
+operations:
+  publishOportunidadCreada:
+    action: send
+    channel: { $ref: '#/channels/oportunidadCreada' }
+    summary: El módulo Oportunidades publica una nueva oportunidad; NeatMatch la consume.
+  publishOportunidadTomada:
+    action: send
+    channel: { $ref: '#/channels/oportunidadTomada' }
+    summary: Asignación atómica urgente (primero-gana); notifica a perdedores (409).
+  publishAcuerdoAceptado:
+    action: send
+    channel: { $ref: '#/channels/acuerdoAceptado' }
+    summary: Doble aceptación con método de verificación; dispara retención de escrow.
+  publishRetencionEscrowFallida:
+    action: send
+    channel: { $ref: '#/channels/retencionEscrowFallida' }
+    summary: La retención falló; el acuerdo no queda ACORDADO (→ PAGO_FALLIDO).
+  publishTrabajoEntregado:
+    action: send
+    channel: { $ref: '#/channels/trabajoEntregado' }
+    summary: Abre la ventana de reclamo; la confirmación o su vencimiento libera el escrow.
+  publishServicioPagado:
+    action: send
+    channel: { $ref: '#/channels/servicioPagado' }
+    summary: Habilita la evaluación (Trust Score sólo con servicio pagado).
+  publishEscrowLiberado:
+    action: send
+    channel: { $ref: '#/channels/escrowLiberado' }
+    summary: ESCROW → profesional (neto) + COMISION (20%).
+  publishReembolsoEmitido:
+    action: send
+    channel: { $ref: '#/channels/reembolsoEmitido' }
+    summary: Reembolso total/parcial; sin comisión sobre lo reembolsado.
+  publishContracargoRecibido:
+    action: send
+    channel: { $ref: '#/channels/contracargoRecibido' }
+    summary: Chargeback posterior; puede derivar en cuenta RECUPERO.
+  publishEvaluacionEnviada:
+    action: send
+    channel: { $ref: '#/channels/evaluacionEnviada' }
+    summary: Asienta evento en ReputationLog y recalcula la proyección del Trust Score.
+
+components:
+  messages:
+    OportunidadCreada:
+      payload: { $ref: '#/components/schemas/OportunidadRef' }
+    OportunidadTomada:
+      payload:
+        allOf:
+          - { $ref: '#/components/schemas/OportunidadRef' }
+          - type: object
+            properties:
+              profesional_id: { type: string }
+              aceptacion_urgente_id: { type: string, description: 'Entidad auditable (doc 00 §4)' }
+    ProfesionalDisponibleCambio:
+      payload:
+        type: object
+        properties:
+          profesional_id: { type: string }
+          disponible: { type: boolean }
+          geo: { $ref: '#/components/schemas/GeoAprox' }
+    AcuerdoAceptado:
+      payload:
+        type: object
+        properties:
+          acuerdo_id: { type: string }
+          version_n: { type: integer }
+          aceptado_por: { type: string, enum: [cliente, profesional] }
+          metodo_verificacion: { type: string, enum: [pin, biometria, otro], description: 'No repudio (doc 03 §4.1)' }
+          timestamp: { type: string, format: date-time }
+    RetencionEscrowFallida:
+      payload:
+        type: object
+        properties:
+          acuerdo_id: { type: string }
+          servicio_id: { type: string }
+          motivo: { type: string, enum: [saldo_insuficiente, cargo_rechazado] }
+    DireccionRevelada:
+      payload:
+        type: object
+        properties:
+          acuerdo_id: { type: string }
+          profesional_id: { type: string }
+          motivo: { type: string, enum: [acuerdo_aceptado, urgente_asignado] }
+    TrabajoEntregado:
+      payload:
+        type: object
+        properties:
+          servicio_id: { type: string }
+          ventana_reclamo_vence: { type: string, format: date-time }
+    AcuerdoCancelado:
+      payload:
+        type: object
+        properties:
+          acuerdo_id: { type: string }
+          por: { type: string, enum: [cliente, profesional, sistema] }
+          resolucion_escrow: { type: string, enum: [reembolsado, liberado, dividido, na] }
+    AcuerdoExpirado:
+      payload:
+        type: object
+        properties:
+          acuerdo_id: { type: string }
+          modo: { type: string, enum: [urgent, scheduled] }
+    ServicioPagado:
+      payload: { $ref: '#/components/schemas/ServicioRef' }
+    EscrowLiberado:
+      payload:
+        type: object
+        properties:
+          servicio_id: { type: string }
+          transaccion_id: { type: string }
+          neto_profesional: { type: integer }
+          comision: { type: integer }
+    ReembolsoEmitido:
+      payload:
+        type: object
+        properties:
+          servicio_id: { type: string }
+          transaccion_id: { type: string }
+          tipo: { type: string, enum: [total, parcial, dividido] }
+          monto_reembolsado: { type: integer }
+    ContracargoRecibido:
+      payload:
+        type: object
+        properties:
+          pago_id: { type: string }
+          servicio_id: { type: string }
+          derivo_a_recupero: { type: boolean }
+    EvaluacionEnviada:
+      payload:
+        type: object
+        properties:
+          servicio_id: { type: string }
+          evaluador_id: { type: string }
+          evaluado_id: { type: string }
+          estrellas: { type: integer, minimum: 1, maximum: 5 }
+          publicada: { type: boolean, description: 'true al liberar double-blind' }
+    ServicioFinalizado:
+      payload: { $ref: '#/components/schemas/ServicioRef' }
+
+  schemas:
+    OportunidadRef:
+      type: object
+      properties:
+        oportunidad_id: { type: string }
+        tipo: { type: string, enum: [urgent, scheduled] }
+        categoria: { type: string }
+        geo: { $ref: '#/components/schemas/GeoAprox' }
+    ServicioRef:
+      type: object
+      properties:
+        servicio_id: { type: string }
+        acuerdo_id: { type: string }
+    GeoAprox:
+      type: object
+      properties:
+        lat_aprox: { type: number }
+        lng_aprox: { type: number }
+        zona: { type: string }
+        radio_m: { type: integer }

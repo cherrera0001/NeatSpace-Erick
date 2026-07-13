@@ -1,0 +1,1036 @@
+openapi: 3.1.0
+info:
+  title: NeatSpace API
+  version: 0.1.0
+  summary: Marketplace de servicios a domicilio con perfil dual (cliente/profesional).
+  description: |
+    Contrato REST síncrono de NeatSpace, derivado de los documentos de diseño ya
+    cerrados por el panel multirol (ver `docs/00-Evaluacion-Multirol.md`).
+
+    Reglas transversales embebidas (ver `specs/README.md`):
+    - Toda escritura de dinero exige `Idempotency-Key` (400 si falta).
+    - La comisión (20%) se deriva server-side; nunca viaja en el request.
+    - El webhook de MercadoPago es la fuente de verdad del pago; `/pay` y `/topup` sólo inician el intento.
+    - `/release` nunca libera unilateralmente (409 si no hay entrega confirmada o ventana vencida).
+    - `POST /reviews` → 409 si el servicio no está pagado; el cuerpo nunca trae el 0–100.
+    - Geolocalización enmascarada: dirección exacta sólo con Acuerdo aceptado o urgente asignado.
+  contact:
+    name: NeatSpace
+  license:
+    name: Propietario
+servers:
+  - url: https://api.neatspace.cl/v1
+    description: Producción (placeholder)
+  - url: http://localhost:3000/v1
+    description: Local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Identidad
+    description: Registro, sesión y NeatProfile. x-source doc 01 §3.3
+  - name: Catalogo
+    description: Categorías de servicio. x-source doc 01 §3.3
+  - name: Oportunidades
+    description: Publicación y feed de oportunidades (urgente/programado). x-source doc 01 §3.1, §3.3
+  - name: NeatMatch
+    description: Ranking y sugerencia de profesionales. x-source doc 02
+  - name: SalaDeAcuerdo
+    description: Negociación, versiones, Precio Justo, entrega y cierre. x-source doc 03
+  - name: NeatWallet
+    description: Billetera, escrow, comisión y retiros. x-source doc 04
+  - name: TrustScore
+    description: Evaluación y reputación derivada. x-source doc 05
+  - name: Webhooks
+    description: Fuente de verdad de pagos (MercadoPago). x-source doc 04 §6
+  - name: Interno
+    description: Endpoints de sistema, no expuestos al cliente.
+
+paths:
+  # ─────────────────────────────── Identidad ───────────────────────────────
+  /auth/register:
+    post:
+      tags: [Identidad]
+      summary: Crea usuario + NeatProfile + NeatWallet (atómico)
+      operationId: register
+      security: []
+      x-source: doc 01 §3.3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterInput' }
+      responses:
+        '201':
+          description: Cuenta creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /auth/login:
+    post:
+      tags: [Identidad]
+      summary: Inicia sesión
+      operationId: login
+      security: []
+      x-source: doc 01 §3.3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginInput' }
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /profiles/{id}:
+    get:
+      tags: [Identidad]
+      summary: NeatProfile público (currículum vivo)
+      operationId: getProfile
+      x-source: doc 01 §3.3
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200':
+          description: Perfil público
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NeatProfile' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /me/profile:
+    patch:
+      tags: [Identidad]
+      summary: Edita descripción, habilidades declaradas y cobertura del propio perfil
+      operationId: updateMyProfile
+      x-source: doc 01 §3.3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfilePatch' }
+      responses:
+        '200':
+          description: Perfil actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NeatProfile' }
+
+  # ─────────────────────────────── Catálogo ────────────────────────────────
+  /categories:
+    get:
+      tags: [Catalogo]
+      summary: Árbol de categorías
+      operationId: listCategories
+      x-source: doc 01 §3.3
+      parameters:
+        - { name: level, in: query, schema: { type: integer } }
+        - { name: parent, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Categorías
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Categoria' }
+
+  # ────────────────────────────── Oportunidades ────────────────────────────
+  /opportunities:
+    post:
+      tags: [Oportunidades]
+      summary: Publica una oportunidad (urgente o programada)
+      operationId: createOpportunity
+      x-source: doc 01 §3.1, §3.3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OportunidadInput' }
+      responses:
+        '201':
+          description: Oportunidad publicada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Oportunidad' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      tags: [Oportunidades]
+      summary: Feed en vivo (geolocalización enmascarada)
+      description: |
+        Expone sólo geo aproximada (radio/zona). La dirección exacta NO se entrega
+        aquí — se revela sólo con Acuerdo aceptado o urgente asignado (doc 01 §3.3).
+      operationId: listOpportunities
+      x-source: doc 01 §3.3, doc 03 §2
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [urgent, scheduled] } }
+        - { name: near, in: query, description: 'lat,lng', schema: { type: string } }
+        - { name: radius, in: query, schema: { type: integer } }
+        - { name: category, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Oportunidades con geo aproximada
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OportunidadFeedItem' }
+  /opportunities/{id}:
+    get:
+      tags: [Oportunidades]
+      summary: Detalle de oportunidad
+      operationId: getOpportunity
+      x-source: doc 01 §3.3
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200':
+          description: Oportunidad
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Oportunidad' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /opportunities/{id}/applications:
+    post:
+      tags: [Oportunidades]
+      summary: Postular a una oportunidad programada
+      operationId: apply
+      x-source: doc 01 §3.3
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '201': { description: Postulación registrada }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [Oportunidades]
+      summary: El cliente revisa las postulaciones
+      operationId: listApplications
+      x-source: doc 01 §3.3
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200':
+          description: Postulaciones
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Postulacion' }
+  /opportunities/{id}/matches:
+    get:
+      tags: [NeatMatch]
+      summary: Top profesionales sugeridos + explicación (reason codes)
+      description: |
+        RBAC obligatorio; rate-limited. No expone el Trust Score crudo con flag
+        EMERGING a no-clientes (anti-IDOR, doc 02 §10).
+      operationId: getMatches
+      x-source: doc 02 §10, doc 01 §3.3
+      parameters:
+        - { $ref: '#/components/parameters/PathId' }
+        - { name: prefs, in: query, description: 'p.ej. speed|price|trust', schema: { type: string } }
+      responses:
+        '200':
+          description: Ranking de matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Match' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  # ────────────────────────────── Sala de Acuerdo ──────────────────────────
+  /opportunities/{id}/agreement:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Abre la Sala de Acuerdo (estado ABIERTA)
+      operationId: openAgreement
+      x-source: doc 03 §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '201':
+          description: Sala abierta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Acuerdo' }
+  /agreements/{id}:
+    get:
+      tags: [SalaDeAcuerdo]
+      summary: Estado, versión vigente, partes y Trust Scores
+      operationId: getAgreement
+      x-source: doc 03 §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200':
+          description: Acuerdo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Acuerdo' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /agreements/{id}/versions:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Propone una nueva versión de términos (→ PROPUESTA)
+      operationId: proposeVersion
+      x-source: doc 03 §4, §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcuerdoVersionInput' }
+      responses:
+        '201':
+          description: Nueva versión propuesta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AcuerdoVersion' }
+  /agreements/{id}/price-offers:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Contraoferta con justificación (Precio Justo)
+      description: 422 si falta `justificacion` (doc 03 §11).
+      operationId: makePriceOffer
+      x-source: doc 03 §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PriceOfferInput' }
+      responses:
+        '201':
+          description: Oferta registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PriceOffer' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /agreements/{id}/price-offers/{oid}/accept:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Acepta una contraoferta (su monto se escribe en una nueva versión)
+      operationId: acceptPriceOffer
+      x-source: doc 03 §5, §11
+      parameters:
+        - { $ref: '#/components/parameters/PathId' }
+        - { name: oid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Oferta aceptada }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /agreements/{id}/accept:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Acepta la versión vigente por tu parte (requiere step-up de identidad)
+      description: |
+        Exige confirmación de step-up (PIN/biometría), obligatoria sobre umbral de monto
+        para no repudio. Con versión desactualizada → 409. La doble aceptación gatilla la
+        retención de escrow; si la retención falla, el acuerdo pasa a PAGO_FALLIDO (doc 03).
+      operationId: acceptAgreement
+      x-source: doc 03 §4.1, §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptInput' }
+      responses:
+        '200':
+          description: Aceptación registrada (y escrow retenido si ambas partes aceptaron)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Acuerdo' }
+        '409':
+          description: Versión desactualizada o pago fallido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /agreements/{id}/amendments:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Enmienda de alcance durante EN_EJECUCION
+      description: Sólo válida en EN_EJECUCION; sobre umbral % exige evidencia/alerta NeatAI (doc 03 §11).
+      operationId: amend
+      x-source: doc 03 §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AmendmentInput' }
+      responses:
+        '201': { description: Enmienda propuesta }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /agreements/{id}/deliver:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: El profesional marca "trabajo entregado" (→ ENTREGADO, abre ventana de reclamo)
+      operationId: deliver
+      x-source: doc 03 §10, §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200': { description: Marcado como entregado }
+  /agreements/{id}/confirm:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: El cliente confirma la entrega (→ CERRADO + libera escrow)
+      description: Si vence la ventana de reclamo (24–48h), la liberación es automática (doc 03 §10).
+      operationId: confirm
+      x-source: doc 03 §10, §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200': { description: Entrega confirmada, escrow liberado }
+  /agreements/{id}/cancel:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Cancela el acuerdo según política de estado
+      operationId: cancelAgreement
+      x-source: doc 03 §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200': { description: Cancelado; escrow resuelto según corresponda }
+  /agreements/{id}/messages:
+    get:
+      tags: [SalaDeAcuerdo]
+      summary: Mensajes de la sala
+      operationId: listMessages
+      x-source: doc 01 §3.3
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200':
+          description: Mensajes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Mensaje' }
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Envía un mensaje (NeatAI puede advertir sobre contacto externo)
+      operationId: sendMessage
+      x-source: doc 03 §7
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MensajeInput' }
+      responses:
+        '201': { description: Mensaje enviado }
+
+  # ─────────────────────────── Servicios (ejecución) ───────────────────────
+  /services/{id}/start:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Inicia la ejecución del servicio
+      operationId: startService
+      x-source: doc 01 §3.3
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200': { description: Servicio en ejecución }
+  /services/{id}/finish:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Finaliza la ejecución (abre ventana de disputa)
+      operationId: finishService
+      x-source: doc 01 §3.1 (Flujo C)
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200': { description: Servicio finalizado }
+  /services/{id}/disputes:
+    post:
+      tags: [SalaDeAcuerdo]
+      summary: Abre una disputa (congela el escrow → EN_DISPUTA)
+      operationId: openDispute
+      x-source: doc 01 §3.3, doc 03 §3
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisputaInput' }
+      responses:
+        '201': { description: Disputa abierta }
+
+  # ─────────────────────────────── NeatWallet ──────────────────────────────
+  /wallet:
+    get:
+      tags: [NeatWallet]
+      summary: Saldo (derivado) + movimientos paginados
+      description: El saldo es una proyección `Σ créditos − Σ débitos`; gana el ledger (doc 04 §1).
+      operationId: getWallet
+      x-source: doc 04 §9
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      responses:
+        '200':
+          description: Billetera del titular autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WalletView' }
+  /wallet/topup:
+    post:
+      tags: [NeatWallet]
+      summary: Inicia un abono vía MercadoPago
+      description: No asienta; el asiento se crea sólo al recibir `approved` por webhook (doc 04 §6).
+      operationId: topup
+      x-source: doc 04 §9
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TopupInput' }
+      responses:
+        '202':
+          description: Intento de abono iniciado (pendiente)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagoIntento' }
+        '400': { $ref: '#/components/responses/MissingIdempotencyKey' }
+  /wallet/withdraw:
+    post:
+      tags: [NeatWallet]
+      summary: Retiro a banco (2FA + KYC)
+      description: Billetera → PASARELA → payout MercadoPago. Requiere 2FA; sobre umbral, KYC reforzado (doc 04 §8).
+      operationId: withdraw
+      x-source: doc 04 §8, §9
+      parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WithdrawInput' }
+      responses:
+        '202':
+          description: Retiro en proceso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaccion' }
+        '400': { $ref: '#/components/responses/MissingIdempotencyKey' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /wallet/transactions/{id}:
+    get:
+      tags: [NeatWallet]
+      summary: Detalle auditable de una transacción (todos sus asientos)
+      description: Verifica pertenencia antes de responder (anti-IDOR, doc 04 §9).
+      operationId: getTransaction
+      x-source: doc 04 §9
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200':
+          description: Transacción con sus ledger_entry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaccion' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /services/{id}/hold:
+    post:
+      tags: [Interno]
+      summary: Retención en escrow al ACORDAR (interno, desde la Sala de Acuerdo)
+      operationId: holdEscrow
+      x-source: doc 04 §9
+      parameters:
+        - { $ref: '#/components/parameters/PathId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '200':
+          description: Fondos retenidos en ESCROW
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaccion' }
+        '409':
+          description: Retención fallida (→ PAGO_FALLIDO)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /services/{id}/release:
+    post:
+      tags: [Interno]
+      summary: Liberación al profesional (comisión 20%)
+      description: 409 si el servicio no está ENTREGADO+confirmado (o ventana vencida). Nunca unilateral (doc 04 §9).
+      operationId: releaseEscrow
+      x-source: doc 04 §9
+      parameters:
+        - { $ref: '#/components/parameters/PathId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '200':
+          description: Escrow liberado (neto al profesional + comisión)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaccion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /services/{id}/refund:
+    post:
+      tags: [Interno]
+      summary: Reembolso total/parcial (desde Resolución de Conflictos)
+      description: No se cobra comisión sobre un reembolso; en resolución dividida es proporcional (doc 04 §5).
+      operationId: refund
+      x-source: doc 04 §9
+      parameters:
+        - { $ref: '#/components/parameters/PathId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefundInput' }
+      responses:
+        '200':
+          description: Reembolso asentado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaccion' }
+
+  # ─────────────────────────────── Webhooks ────────────────────────────────
+  /webhooks/mercadopago:
+    post:
+      tags: [Webhooks]
+      summary: FUENTE DE VERDAD del estado de pago
+      description: |
+        Verifica firma HMAC `x-signature`, deduplica por event-id (idempotente),
+        aplica anti-replay y confirma con `GET /payments/{id}` server-side antes de
+        asentar. Reprocesar el mismo evento no duplica asientos (doc 04 §6).
+      operationId: mercadopagoWebhook
+      security: []
+      x-source: doc 04 §6
+      parameters:
+        - { name: x-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MercadoPagoEvent' }
+      responses:
+        '200': { description: Evento aceptado/deduplicado }
+        '401': { description: Firma inválida }
+
+  # ─────────────────────────────── Trust Score ─────────────────────────────
+  /services/{id}/reviews:
+    post:
+      tags: [TrustScore]
+      summary: Evaluar (bidireccional, double-blind)
+      description: |
+        409 si el servicio no está pagado (CERRADO = escrow liberado). El cuerpo trae
+        estrellas + atributos, NUNCA el 0–100 (se deriva server-side). Double-blind:
+        se publica al enviar ambas partes o vencer la ventana (doc 05 §2, §11).
+      operationId: createReview
+      x-source: doc 05 §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewInput' }
+      responses:
+        '201': { description: Evaluación registrada (oculta hasta publicación simultánea) }
+        '409':
+          description: Servicio no pagado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /profiles/{id}/trust-score:
+    get:
+      tags: [TrustScore]
+      summary: Trust Score derivado
+      description: Sin datos crudos que permitan IDOR para no-clientes (doc 05 §11).
+      operationId: getTrustScore
+      x-source: doc 05 §11
+      parameters: [ { $ref: '#/components/parameters/PathId' } ]
+      responses:
+        '200':
+          description: Proyección de reputación
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrustScoreView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /profiles/{id}/reputation:
+    get:
+      tags: [TrustScore]
+      summary: Historial público paginado (derivado del log)
+      operationId: getReputation
+      x-source: doc 05 §11
+      parameters:
+        - { $ref: '#/components/parameters/PathId' }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Historial de reputación
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ReputacionEvento' }
+
+  /internal/reputation/recompute/{profileId}:
+    post:
+      tags: [Interno]
+      summary: Recomputa la proyección del Trust Score desde el log
+      operationId: recomputeReputation
+      x-source: doc 05 §11
+      parameters:
+        - { name: profileId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Proyección recomputada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrustScoreView' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PathId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Obligatoria en toda escritura de dinero (400 si falta). doc 04 §9
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: No autenticado
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: No autorizado (RBAC / pertenencia)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: No encontrado
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Conflicto de estado (p. ej. versión desactualizada, primero-gana)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unprocessable:
+      description: Entidad no procesable (validación de negocio)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    RateLimited:
+      description: Límite de tasa excedido
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    MissingIdempotencyKey:
+      description: Falta `Idempotency-Key` en una escritura de dinero
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: CONFLICT }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+
+    # ── Identidad ──
+    RegisterInput:
+      type: object
+      required: [email, password, nombre]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        nombre: { type: string }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    AuthResult:
+      type: object
+      properties:
+        token: { type: string }
+        usuario: { $ref: '#/components/schemas/NeatProfile' }
+    NeatProfile:
+      description: Currículum vivo; unidad de reputación (1—1 con usuario). doc 01 §1.3, doc 05 §10
+      type: object
+      properties:
+        id: { type: string }
+        usuario_id: { type: string }
+        nombre: { type: string }
+        descripcion: { type: string }
+        habilidades: { type: array, items: { type: string } }
+        nivel_verificacion: { type: integer, description: 'Identidad Verificada (Pilar I)' }
+        trust_score: { $ref: '#/components/schemas/TrustScoreView' }
+        badge: { type: string, nullable: true, description: '"Nuevo en NeatSpace" en cold-start' }
+    ProfilePatch:
+      type: object
+      properties:
+        descripcion: { type: string }
+        habilidades: { type: array, items: { type: string } }
+        cobertura: { $ref: '#/components/schemas/Cobertura' }
+    Cobertura:
+      type: object
+      properties:
+        centro: { $ref: '#/components/schemas/GeoAprox' }
+        radio_km: { type: number }
+
+    # ── Catálogo ──
+    Categoria:
+      type: object
+      properties:
+        id: { type: string }
+        nombre: { type: string }
+        parent_id: { type: string, nullable: true }
+        nivel: { type: integer }
+        sensible: { type: boolean, description: 'Requiere verificación reforzada (doc 02 §4.2)' }
+
+    # ── Geo ──
+    GeoAprox:
+      description: Geolocalización aproximada (zona/comuna). Nunca la dirección exacta en el feed.
+      type: object
+      properties:
+        lat_aprox: { type: number }
+        lng_aprox: { type: number }
+        zona: { type: string }
+        radio_m: { type: integer }
+
+    # ── Oportunidades ──
+    OportunidadInput:
+      type: object
+      required: [tipo, categoria, geo]
+      properties:
+        tipo: { type: string, enum: [urgent, scheduled] }
+        categoria: { type: string }
+        geo: { $ref: '#/components/schemas/GeoAprox' }
+        precio_ref: { type: integer, description: 'CLP' }
+        fecha: { type: string, format: date-time, nullable: true }
+        descripcion: { type: string }
+    Oportunidad:
+      type: object
+      properties:
+        id: { type: string }
+        tipo: { type: string, enum: [urgent, scheduled], description: 'Inmutable (doc 02)' }
+        categoria: { type: string }
+        estado: { type: string, enum: [publicado, tomada, cerrada, sin_cobertura] }
+        geo: { $ref: '#/components/schemas/GeoAprox' }
+        precio_ref: { type: integer }
+        convertida_desde_id: { type: string, nullable: true, description: 'Fallback SinCobertura (doc 02)' }
+        creado_en: { type: string, format: date-time }
+    OportunidadFeedItem:
+      description: Vista de feed con geo enmascarada; sin dirección exacta.
+      type: object
+      properties:
+        id: { type: string }
+        tipo: { type: string, enum: [urgent, scheduled] }
+        categoria: { type: string }
+        distancia_rango: { type: string, description: 'Distancia agrupada en rangos (doc 02 §6.3)' }
+        geo: { $ref: '#/components/schemas/GeoAprox' }
+        precio_ref: { type: integer }
+    Postulacion:
+      type: object
+      properties:
+        id: { type: string }
+        profesional_id: { type: string }
+        mensaje: { type: string }
+        creado_en: { type: string, format: date-time }
+    Match:
+      type: object
+      properties:
+        profesional_id: { type: string }
+        score_ranking: { type: number }
+        reason_codes: { type: array, items: { type: string } }
+        badge: { type: string, nullable: true }
+
+    # ── Sala de Acuerdo ──
+    Acuerdo:
+      type: object
+      properties:
+        id: { type: string }
+        oportunidad_id: { type: string }
+        estado:
+          type: string
+          enum: [ABIERTA, PROPUESTA, PAGO_FALLIDO, ACORDADO, EN_EJECUCION, ENTREGADO, EN_DISPUTA, CERRADO, CANCELADO, EXPIRADO]
+        version_vigente: { $ref: '#/components/schemas/AcuerdoVersion' }
+        aceptado_cliente: { type: boolean }
+        aceptado_profesional: { type: boolean }
+        direccion_revelada: { type: boolean, description: 'Sólo tras ACORDADO / urgente asignado' }
+    AcuerdoVersionInput:
+      type: object
+      required: [terminos]
+      properties:
+        terminos: { $ref: '#/components/schemas/Terminos' }
+    AcuerdoVersion:
+      description: Snapshot inmutable de términos (doc 03 §4).
+      type: object
+      properties:
+        n: { type: integer }
+        terminos: { $ref: '#/components/schemas/Terminos' }
+        creado_en: { type: string, format: date-time }
+    Terminos:
+      type: object
+      properties:
+        precio: { type: integer, description: 'CLP' }
+        duracion: { type: string }
+        materiales: { type: string, nullable: true }
+        responsabilidades: { type: string, nullable: true }
+        condiciones: { type: string, nullable: true }
+    PriceOfferInput:
+      type: object
+      required: [monto, justificacion]
+      properties:
+        monto: { type: integer }
+        justificacion: { type: string, description: 'Obligatoria (422 si falta). Estilo inDrive.' }
+    PriceOffer:
+      type: object
+      properties:
+        id: { type: string }
+        monto: { type: integer }
+        justificacion: { type: string }
+        creado_en: { type: string, format: date-time }
+    AcceptInput:
+      type: object
+      required: [version_n, step_up]
+      properties:
+        version_n: { type: integer, description: 'Versión que se acepta; 409 si ya cambió' }
+        step_up:
+          type: object
+          description: Confirmación de identidad para no repudio (doc 03 §4.1)
+          properties:
+            metodo: { type: string, enum: [pin, biometria, otro] }
+            token: { type: string }
+    AmendmentInput:
+      type: object
+      required: [cambio]
+      properties:
+        cambio: { $ref: '#/components/schemas/Terminos' }
+        evidencia_url: { type: string, nullable: true }
+    DisputaInput:
+      type: object
+      required: [motivo]
+      properties:
+        motivo: { type: string }
+        evidencia_url: { type: string, nullable: true }
+    Mensaje:
+      type: object
+      properties:
+        id: { type: string }
+        autor_id: { type: string }
+        texto: { type: string }
+        leido: { type: boolean }
+        alerta_neatai: { type: string, nullable: true, description: 'Advertencia de contacto externo (doc 03 §7)' }
+        creado_en: { type: string, format: date-time }
+    MensajeInput:
+      type: object
+      required: [texto]
+      properties:
+        texto: { type: string }
+
+    # ── NeatWallet ──
+    WalletView:
+      type: object
+      properties:
+        wallet_id: { type: string }
+        saldo: { type: integer, description: 'Proyección Σcréditos − Σdébitos (CLP)' }
+        moneda: { type: string, default: CLP }
+        movimientos:
+          type: array
+          items: { $ref: '#/components/schemas/Movimiento' }
+        next_cursor: { type: string, nullable: true }
+    Movimiento:
+      type: object
+      properties:
+        transaccion_id: { type: string }
+        tipo: { type: string, enum: [topup, retencion, liberacion, reembolso, reverso, retiro] }
+        monto: { type: integer }
+        direccion: { type: string, enum: [debito, credito] }
+        concepto: { type: string }
+        creado_en: { type: string, format: date-time }
+    TopupInput:
+      type: object
+      required: [monto]
+      properties:
+        monto: { type: integer, minimum: 1 }
+        medio: { type: string, description: 'Medio de pago MercadoPago' }
+    WithdrawInput:
+      type: object
+      required: [monto, cuenta_bancaria]
+      properties:
+        monto: { type: integer, minimum: 1 }
+        cuenta_bancaria: { type: string, description: 'Debe estar a nombre del titular (anti-testaferro)' }
+        twofa_token: { type: string }
+    RefundInput:
+      type: object
+      required: [tipo]
+      properties:
+        tipo: { type: string, enum: [total, parcial, dividido] }
+        monto_profesional: { type: integer, nullable: true, description: 'En resolución dividida' }
+    PagoIntento:
+      type: object
+      properties:
+        pago_id: { type: string }
+        estado: { type: string, enum: [pendiente], description: 'Confirmación real llega por webhook' }
+    Transaccion:
+      description: Agrupador de partida doble; Σ débitos = Σ créditos. doc 04 §3
+      type: object
+      properties:
+        id: { type: string }
+        tipo: { type: string, enum: [topup, retencion, liberacion, reembolso, reverso, retiro] }
+        referencia_dominio: { type: string }
+        idempotency_key: { type: string }
+        asientos:
+          type: array
+          items: { $ref: '#/components/schemas/LedgerEntry' }
+        creado_en: { type: string, format: date-time }
+    LedgerEntry:
+      description: Asiento append-only (sin UPDATE/DELETE). doc 04 §3
+      type: object
+      properties:
+        id: { type: string }
+        wallet_id: { type: string }
+        direccion: { type: string, enum: [debito, credito] }
+        monto: { type: integer }
+        concepto: { type: string }
+    MercadoPagoEvent:
+      type: object
+      properties:
+        id: { type: string, description: 'event-id único (dedup)' }
+        type: { type: string }
+        data:
+          type: object
+          properties:
+            id: { type: string, description: 'payment id → se confirma con GET /payments/{id}' }
+        status:
+          type: string
+          enum: [pending, in_process, approved, rejected, refunded, charged_back]
+
+    # ── Trust Score ──
+    ReviewInput:
+      type: object
+      required: [estrellas]
+      properties:
+        estrellas: { type: integer, minimum: 1, maximum: 5 }
+        atributos:
+          type: object
+          additionalProperties: { type: boolean }
+          example: { amable: true, rapido: true, prolijo: true }
+        comentario: { type: string, nullable: true, description: 'Pasa por moderación + limpieza de PII (doc 05 §2)' }
+    TrustScoreView:
+      description: Proyección recomputable; nunca un campo seteable. doc 05 §1, §10
+      type: object
+      properties:
+        valor_0_100: { type: integer, minimum: 0, maximum: 100 }
+        atributos_0_100:
+          type: object
+          additionalProperties: { type: integer }
+          example: { amable: 88, rapido: 73 }
+        nivel_verificacion: { type: integer }
+        n_evaluaciones: { type: integer }
+        badge: { type: string, nullable: true }
+    ReputacionEvento:
+      type: object
+      properties:
+        id: { type: string }
+        evento: { type: string, enum: [evaluacion, sancion, verificacion, apelacion, decay] }
+        resumen: { type: string }
+        creado_en: { type: string, format: date-time }
