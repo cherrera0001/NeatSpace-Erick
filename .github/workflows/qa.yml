@@ -18,3 +18,30 @@ jobs:
       - run: npm ci
       # Falla el build solo ante severidad 'error' (warnings/info no bloquean).
       - run: npm run lint:specs
+
+  migrate:
+    name: Migraciones (PostgreSQL + PostGIS)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:15-3.4
+        env:
+          POSTGRES_PASSWORD: dev
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aplicar migraciones en orden
+        env:
+          PGPASSWORD: dev
+        run: |
+          for f in db/migrations/0*.sql; do
+            echo ">> $f"
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f "$f"
+          done
+      - name: Smoke — el esquema levanta
+        env:
+          PGPASSWORD: dev
+        run: psql -h localhost -U postgres -c "\dt"
