@@ -40,7 +40,7 @@
 | TC-U06 | Cold-start: n=0 → badge, no número engañoso | doc 05 §5 | expone badge "Nuevo", score≈prior. |
 | TC-U07 | Peso `ω_evaluador` **acotado por techo** | doc 05 §4.3 | cuenta de score alto no supera el tope; sin bucle. |
 | TC-U08 | Hash de cadena: `hash_actual = H(hash_prev ‖ payload)` | IN-8 | recomputo reproduce la cadena. |
-| TC-U09 | Máquina de estados del Acuerdo: transiciones válidas/ inválidas | doc 07 §4 | ACORDADO→ENTREGADO ok; PROPUESTA→CERRADO rechazado. |
+| TC-U09 | Máquina de estados del Acuerdo: transiciones válidas/ inválidas | doc 07 §4 | ACORDADO→EN_EJECUCION ok; ACORDADO→ENTREGADO y PROPUESTA→CERRADO rechazados. |
 | TC-U10 | XOR de identidad de billetera (CHECK explícito booleano) | IN-1 | (u,·,·) ok; (u,e,·) rechazado; (·,·,·) rechazado. |
 | TC-U11 | Enmienda que sube/baja precio ajusta retención | doc 04 §10 | sube→retención extra; baja→devolución. |
 | TC-U12 | Decay: sanción grave de seguridad **no** expira como rating | doc 05 §6 | ω_recencia no elimina sanción de riesgo. |

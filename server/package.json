@@ -5,7 +5,8 @@
   "description": "Stub de servidor NestJS derivado del contrato specs/openapi.yaml (SDD).",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.16.10",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.8"
   }
 }
