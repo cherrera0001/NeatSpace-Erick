@@ -25,9 +25,11 @@ CREATE TABLE empresa (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   razon_social text NOT NULL,
   giro         text,
-  wallet_id    uuid,                    -- FK a neatwallet se agrega en 0006
   creado_en    timestamptz NOT NULL DEFAULT now()
 );
+-- La billetera corporativa se deriva del vínculo autoritativo neatwallet.empresa_id
+-- (UNIQUE + wallet_tipo_coherente, 0006). Se eliminó el back-pointer empresa.wallet_id
+-- porque era redundante y no verificado (podía apuntar a cualquier billetera).
 
 CREATE TABLE empresa_miembro (
   empresa_id uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,

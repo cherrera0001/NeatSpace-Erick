@@ -5,8 +5,10 @@ import {
   NotImplementedException,
   Param,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ReviewDto } from './dto';
+import { ServiceAuthGuard } from '../common/service-auth.guard';
 
 // Contexto Reputación (doc 07 §1). RN-5, RN-8, IN-4, IN-8.
 
@@ -35,6 +37,7 @@ export class ProfilesReputationController {
 }
 
 @Controller('internal/reputation')
+@UseGuards(ServiceAuthGuard)
 export class InternalReputationController {
   /** CU-31 · Recomputa la proyección desde el log (interno). IN-7/IN-8. */
   @Post('recompute/:profileId')

@@ -24,7 +24,8 @@ CREATE TABLE documento_tributario (
   monto_bruto    bigint NOT NULL CHECK (monto_bruto >= 0),
   retencion      bigint NOT NULL DEFAULT 0 CHECK (retencion >= 0),
   folio_sii      text,
-  emitido_en     timestamptz NOT NULL DEFAULT now()
+  emitido_en     timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT doc_retencion_le_bruto CHECK (retencion <= monto_bruto)  -- imposible retener más que el bruto
 );
 
 COMMIT;

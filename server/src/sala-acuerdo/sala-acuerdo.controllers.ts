@@ -6,7 +6,14 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
-import { PriceOfferDto } from './dto';
+import {
+  PriceOfferDto,
+  AcceptDto,
+  AcuerdoVersionDto,
+  AmendmentDto,
+  MensajeDto,
+  DisputaDto,
+} from './dto';
 
 // Contexto Sala de Acuerdo + ejecución del servicio (doc 07 §1).
 
@@ -20,7 +27,7 @@ export class AgreementsController {
 
   /** CU-12 · Proponer versión de términos (→ PROPUESTA). */
   @Post(':id/versions')
-  proposeVersion(@Param('id') _id: string, @Body() _b: unknown): never {
+  proposeVersion(@Param('id') _id: string, @Body() _b: AcuerdoVersionDto): never {
     throw new NotImplementedException('CU-12 · proposeVersion');
   }
 
@@ -38,13 +45,13 @@ export class AgreementsController {
 
   /** CU-14 · Aceptar (step-up) → retención de escrow. RN-4/RN-6. 409 si versión vieja. */
   @Post(':id/accept')
-  accept(@Param('id') _id: string, @Body() _b: unknown): never {
+  accept(@Param('id') _id: string, @Body() _b: AcceptDto): never {
     throw new NotImplementedException('CU-14 · acceptAgreement');
   }
 
   /** CU-15 · Enmienda durante EN_EJECUCION. */
   @Post(':id/amendments')
-  amend(@Param('id') _id: string, @Body() _b: unknown): never {
+  amend(@Param('id') _id: string, @Body() _b: AmendmentDto): never {
     throw new NotImplementedException('CU-15 · amend');
   }
 
@@ -74,7 +81,7 @@ export class AgreementsController {
 
   /** CU-19 · Enviar mensaje (NeatAI puede advertir contacto externo, RN-10). */
   @Post(':id/messages')
-  sendMessage(@Param('id') _id: string, @Body() _b: unknown): never {
+  sendMessage(@Param('id') _id: string, @Body() _b: MensajeDto): never {
     throw new NotImplementedException('CU-19 · sendMessage');
   }
 }
@@ -95,7 +102,7 @@ export class ServicesExecutionController {
 
   /** CU-32 · Abrir disputa (congela escrow → EN_DISPUTA). */
   @Post(':id/disputes')
-  openDispute(@Param('id') _id: string, @Body() _b: unknown): never {
+  openDispute(@Param('id') _id: string, @Body() _b: DisputaDto): never {
     throw new NotImplementedException('CU-32 · openDispute');
   }
 }

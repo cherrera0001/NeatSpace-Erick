@@ -42,11 +42,12 @@ $defs:
 
   Empresa:
     x-source: doc 01 §1.3 (NeatBusiness)
+    description: La billetera corporativa se deriva de neatwallet.empresa_id (1—1); no hay back-pointer.
     type: object
     properties:
       id: { type: string }
       razon_social: { type: string }
-      wallet_id: { type: string, description: 'Billetera corporativa 1—1' }
+      giro: { type: [string, 'null'] }
 
   Categoria:
     x-source: doc 01 §3.3, doc 02 §4.2

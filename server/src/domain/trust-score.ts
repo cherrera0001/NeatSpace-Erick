@@ -26,8 +26,12 @@ export function bayesianScore(
 ): number {
   const sumW = ratings.reduce((a, r) => a + r.w, 0);
   const sumWS = ratings.reduce((a, r) => a + r.w * r.s, 0);
-  const value = (priorStrength * priorMean + sumWS) / (priorStrength + sumW);
-  return Math.round(100 * value);
+  const denom = priorStrength + sumW;
+  // Guarda: denominador 0 (sin prior ni ratings) → cae al prior, nunca NaN.
+  const value = denom === 0 ? priorMean : (priorStrength * priorMean + sumWS) / denom;
+  const score = Math.round(100 * value);
+  // El score SIEMPRE queda en [0,100] aunque lleguen pesos fuera de rango.
+  return Math.max(0, Math.min(100, score));
 }
 
 /** Techo del peso del evaluador (doc 05 §4.3): evita el bucle "el rico se hace más rico". */

@@ -132,6 +132,26 @@ operations:
     action: send
     channel: { $ref: '#/channels/evaluacionEnviada' }
     summary: Asienta evento en ReputationLog y recalcula la proyección del Trust Score.
+  publishDireccionRevelada:
+    action: send
+    channel: { $ref: '#/channels/direccionRevelada' }
+    summary: La dirección exacta se revela al asignado (acuerdo aceptado / urgente asignado).
+  publishAcuerdoCancelado:
+    action: send
+    channel: { $ref: '#/channels/acuerdoCancelado' }
+    summary: Acuerdo cancelado; el escrow se resuelve según corresponda.
+  publishAcuerdoExpirado:
+    action: send
+    channel: { $ref: '#/channels/acuerdoExpirado' }
+    summary: TTL vencido; la oportunidad se reabre a NeatMatch.
+  publishServicioFinalizado:
+    action: send
+    channel: { $ref: '#/channels/servicioFinalizado' }
+    summary: Servicio finalizado; NeatMatch actualiza señales de aprendizaje.
+  publishProfesionalDisponibleCambio:
+    action: send
+    channel: { $ref: '#/channels/profesionalDisponibleCambio' }
+    summary: El profesional cambió su disponibilidad; NeatMatch lo consume.
 
 components:
   messages:

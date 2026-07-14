@@ -33,4 +33,11 @@ CREATE INDEX idx_eval_evaluador ON evaluacion (evaluador_id);
 CREATE INDEX idx_pago_acuerdo   ON pago (acuerdo_id);
 CREATE INDEX idx_disputa_abre   ON disputa (abierta_por);
 
+-- Hilo de la Sala de Acuerdo (chat y ofertas): consultas WHERE acuerdo_id ORDER BY creado_en
+CREATE INDEX idx_mensaje_acuerdo ON mensaje (acuerdo_id, creado_en);
+CREATE INDEX idx_offer_acuerdo   ON price_offer (acuerdo_id, creado_en);
+
+-- Un pago de MercadoPago ↔ una sola fila `pago` (evita duplicados; NULL para topups internos)
+CREATE UNIQUE INDEX pago_mp_uq   ON pago (mp_payment_id) WHERE mp_payment_id IS NOT NULL;
+
 COMMIT;

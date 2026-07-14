@@ -10,7 +10,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { IdempotencyKeyGuard } from '../common/idempotency-key.guard';
-import { TopupDto, WithdrawDto } from './dto';
+import { ServiceAuthGuard } from '../common/service-auth.guard';
+import { TopupDto, WithdrawDto, RefundDto } from './dto';
 
 // Contexto NeatWallet + webhooks (doc 07 §1). Dinero: RN-1..4, IN-2.
 
@@ -45,6 +46,7 @@ export class WalletController {
 
 // Endpoints internos de dinero sobre /services (auth servicio-a-servicio, no cliente).
 @Controller('services')
+@UseGuards(ServiceAuthGuard)
 export class ServicesWalletController {
   /** CU-22 · Retención en escrow al ACORDAR (interno). RN-1, IN-2. */
   @Post(':id/hold')
@@ -63,7 +65,7 @@ export class ServicesWalletController {
   /** CU-24 · Reembolso total/parcial/dividido. RN-2 (sin comisión sobre reembolso), RN-9. */
   @Post(':id/refund')
   @UseGuards(IdempotencyKeyGuard)
-  refund(@Param('id') _id: string, @Body() _b: unknown): never {
+  refund(@Param('id') _id: string, @Body() _b: RefundDto): never {
     throw new NotImplementedException('CU-24 · refund');
   }
 }

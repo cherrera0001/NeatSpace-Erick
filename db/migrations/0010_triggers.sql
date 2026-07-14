@@ -44,4 +44,23 @@ END $$;
 CREATE TRIGGER eval_signal_guard BEFORE UPDATE ON evaluacion
   FOR EACH ROW EXECUTE FUNCTION evaluacion_solo_visible_comentario();
 
+-- admin_action: append-only salvo fijar `checker_id` UNA vez (NULL→valor). Protege la
+-- evidencia de auditoría maker-checker (RN-9): ao_admin ya bloquea DELETE; esto bloquea
+-- reescribir maker_id/tipo/objetivo/motivo o revertir/cambiar checker_id.
+CREATE OR REPLACE FUNCTION admin_action_solo_checker()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.tipo     <> OLD.tipo
+  OR NEW.objetivo <> OLD.objetivo
+  OR NEW.motivo   <> OLD.motivo
+  OR NEW.maker_id <> OLD.maker_id
+  OR NEW.creado_en <> OLD.creado_en
+  OR OLD.checker_id IS NOT NULL THEN
+    RAISE EXCEPTION 'admin_action es append-only salvo fijar checker_id una vez (RN-9)';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER admin_action_guard BEFORE UPDATE ON admin_action
+  FOR EACH ROW EXECUTE FUNCTION admin_action_solo_checker();
+
 COMMIT;

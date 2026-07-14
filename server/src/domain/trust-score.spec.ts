@@ -31,6 +31,19 @@ describe('trust-score — techo de ω_evaluador (TC-U07)', () => {
   });
 });
 
+describe('trust-score — bordes defensivos', () => {
+  it('denominador 0 (sin prior ni ratings) no produce NaN', () => {
+    const s = bayesianScore([], 0.6, 0);
+    expect(Number.isFinite(s)).toBe(true);
+    expect(s).toBe(60);
+  });
+  it('peso negativo no saca el score de [0,100]', () => {
+    const s = bayesianScore([{ s: 1, w: -20 }], M, C);
+    expect(s).toBeGreaterThanOrEqual(0);
+    expect(s).toBeLessThanOrEqual(100);
+  });
+});
+
 describe('trust-score — normalización de estrellas', () => {
   it('1→0, 3→0.5, 5→1', () => {
     expect(starToUnit(1)).toBe(0);

@@ -22,10 +22,6 @@ CREATE TABLE neatwallet (
   CONSTRAINT wallet_rol_sistema_uq UNIQUE (rol_sistema)   -- una sola ESCROW/COMISION/... (NULLs no colisionan)
 );
 
--- FK diferida de empresa.wallet_id (la tabla ya existe)
-ALTER TABLE empresa ADD CONSTRAINT empresa_wallet_fk
-  FOREIGN KEY (wallet_id) REFERENCES neatwallet(id);
-
 CREATE TABLE pago (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   acuerdo_id    uuid REFERENCES acuerdo(id),   -- NULL en topups (no atados a acuerdo)
@@ -82,5 +78,29 @@ CREATE CONSTRAINT TRIGGER tx_balance_chk
   AFTER INSERT ON ledger_entry
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION check_tx_balance();
+
+-- IN-2 (completo): una `transaccion` DEBE tener >=2 asientos balanceados. El trigger
+-- sobre ledger_entry no ve una transacción SIN asientos; este, sobre transaccion,
+-- sí cierra ese hueco (verificado al commit).
+CREATE OR REPLACE FUNCTION check_tx_complete()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d bigint; c bigint; n int;
+BEGIN
+  SELECT coalesce(sum(monto) FILTER (WHERE direccion='debito'),0),
+         coalesce(sum(monto) FILTER (WHERE direccion='credito'),0),
+         count(*)
+    INTO d, c, n
+  FROM ledger_entry WHERE transaccion_id = NEW.id;
+  IF n < 2 OR d <> c THEN
+    RAISE EXCEPTION 'Transacción % incompleta/desbalanceada: asientos=% débitos=% créditos=%',
+      NEW.id, n, d, c;
+  END IF;
+  RETURN NULL;
+END $$;
+
+CREATE CONSTRAINT TRIGGER tx_complete_chk
+  AFTER INSERT ON transaccion
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION check_tx_complete();
 
 COMMIT;

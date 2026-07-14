@@ -531,6 +531,8 @@ paths:
       tags: [Interno]
       summary: Retención en escrow al ACORDAR (interno, desde la Sala de Acuerdo)
       operationId: holdEscrow
+      security:
+        - serviceAuth: []
       x-source: doc 04 §9
       parameters:
         - { $ref: '#/components/parameters/PathId' }
@@ -552,6 +554,8 @@ paths:
       summary: Liberación al profesional (comisión 20%)
       description: 409 si el servicio no está ENTREGADO+confirmado (o ventana vencida). Nunca unilateral (doc 04 §9).
       operationId: releaseEscrow
+      security:
+        - serviceAuth: []
       x-source: doc 04 §9
       parameters:
         - { $ref: '#/components/parameters/PathId' }
@@ -569,6 +573,8 @@ paths:
       summary: Reembolso total/parcial (desde Resolución de Conflictos)
       description: No se cobra comisión sobre un reembolso; en resolución dividida es proporcional (doc 04 §5).
       operationId: refund
+      security:
+        - serviceAuth: []
       x-source: doc 04 §9
       parameters:
         - { $ref: '#/components/parameters/PathId' }
@@ -670,6 +676,8 @@ paths:
       tags: [Interno]
       summary: Recomputa la proyección del Trust Score desde el log
       operationId: recomputeReputation
+      security:
+        - serviceAuth: []
       x-source: doc 05 §11
       parameters:
         - { name: profileId, in: path, required: true, schema: { type: string } }
@@ -686,6 +694,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    serviceAuth:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Autenticación de servicio para endpoints internos; NO alcanzables con un JWT de usuario.
 
   parameters:
     PathId:

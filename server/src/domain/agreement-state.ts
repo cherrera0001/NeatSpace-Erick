@@ -26,9 +26,11 @@ const TRANSITIONS: Record<AgreementState, AgreementState[]> = {
 };
 
 export function canTransition(from: AgreementState, to: AgreementState): boolean {
-  return TRANSITIONS[from].includes(to);
+  const row = TRANSITIONS[from];
+  return row ? row.includes(to) : false; // estado desconocido → false, no TypeError
 }
 
 export function isTerminal(state: AgreementState): boolean {
-  return TRANSITIONS[state].length === 0;
+  const row = TRANSITIONS[state];
+  return row ? row.length === 0 : false;
 }

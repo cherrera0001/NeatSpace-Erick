@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canTransition, isTerminal } from './agreement-state';
+import { canTransition, isTerminal, type AgreementState } from './agreement-state';
 
 describe('agreement-state — transiciones (TC-U09)', () => {
   it('transiciones válidas', () => {
@@ -20,5 +20,12 @@ describe('agreement-state — transiciones (TC-U09)', () => {
     expect(isTerminal('CANCELADO')).toBe(true);
     expect(isTerminal('EXPIRADO')).toBe(true);
     expect(isTerminal('ACORDADO')).toBe(false);
+  });
+
+  it('estado desconocido no lanza (retorna false)', () => {
+    const bogus = 'FOO' as unknown as AgreementState;
+    expect(canTransition(bogus, 'CERRADO')).toBe(false);
+    expect(() => isTerminal(bogus)).not.toThrow();
+    expect(isTerminal(bogus)).toBe(false);
   });
 });

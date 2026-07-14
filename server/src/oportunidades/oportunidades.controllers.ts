@@ -7,6 +7,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { OportunidadInputDto } from './dto';
 
 // Contexto Oportunidades + entrada a NeatMatch (doc 07 §1).
 
@@ -14,7 +15,7 @@ import {
 export class OpportunitiesController {
   /** CU-05 · Publicar oportunidad. IN-5 tipo inmutable; RN-6 geo enmascarada. */
   @Post()
-  create(@Body() _body: unknown): never {
+  create(@Body() _body: OportunidadInputDto): never {
     throw new NotImplementedException('CU-05 · createOpportunity');
   }
 

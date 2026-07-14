@@ -48,4 +48,19 @@ describe('Validación de contrato (e2e)', () => {
 
   it('price-offer sin justificacion → 422', () =>
     http().post('/v1/agreements/abc/price-offers').send({ monto: 1000 }).expect(422));
+
+  it('accept sin version_n/step_up → 422', () =>
+    http().post('/v1/agreements/abc/accept').send({}).expect(422));
+
+  it('accept válido → 501', () =>
+    http()
+      .post('/v1/agreements/abc/accept')
+      .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
+      .expect(501));
+
+  it('interno hold sin X-Internal-Token → 403 (ServiceAuthGuard corre primero)', () =>
+    http().post('/v1/services/abc/hold').set('Idempotency-Key', 'k1').expect(403));
+
+  it('interno hold con token de servicio pero sin Idempotency-Key → 400', () =>
+    http().post('/v1/services/abc/hold').set('X-Internal-Token', 'svc').expect(400));
 });
