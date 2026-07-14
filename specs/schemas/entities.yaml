@@ -274,3 +274,79 @@ $defs:
       lng_aprox: { type: number }
       zona: { type: string }
       radio_m: { type: integer }
+
+  # ─────────── Reconciliadas desde el MR físico (doc 08 §12) ───────────
+  EmpresaMiembro:
+    x-source: doc 08 §3, doc 01 §1.3 (RBAC NeatBusiness)
+    description: Puente usuario↔empresa con rol y permisos.
+    type: object
+    required: [empresa_id, usuario_id, rol]
+    properties:
+      empresa_id: { type: string }
+      usuario_id: { type: string }
+      rol: { type: string, description: 'admin_general|gerente|supervisor|...' }
+      permisos: { type: object, additionalProperties: true }
+
+  Postulacion:
+    x-source: doc 06 CU-07, doc 08 §4
+    description: Postulación de un profesional a una oportunidad programada. UQ(oportunidad, profesional).
+    type: object
+    required: [id, oportunidad_id, profesional_id]
+    properties:
+      id: { type: string }
+      oportunidad_id: { type: string }
+      profesional_id: { type: string }
+      mensaje: { type: [string, 'null'] }
+      creado_en: { type: string, format: date-time }
+
+  AcuerdoAceptacion:
+    x-source: doc 08 §5 (no repudio, separado de la versión inmutable)
+    description: Aceptación por parte con método de verificación. [APPEND-ONLY]. UQ(acuerdo, version_n, parte).
+    type: object
+    required: [id, acuerdo_id, version_n, parte, metodo]
+    properties:
+      id: { type: string }
+      acuerdo_id: { type: string }
+      version_n: { type: integer }
+      parte: { type: string, enum: [cliente, profesional] }
+      metodo: { type: string, enum: [pin, biometria, otro] }
+      aceptado_en: { type: string, format: date-time }
+
+  Disputa:
+    x-source: doc 06 CU-32, doc 03 §3, doc 08 §5
+    description: Disputa que congela el escrow y escala a Resolución de Conflictos.
+    type: object
+    required: [id, acuerdo_id, abierta_por, motivo]
+    properties:
+      id: { type: string }
+      acuerdo_id: { type: string }
+      abierta_por: { type: string }
+      motivo: { type: string }
+      evidencia_url: { type: [string, 'null'] }
+      resolucion: { type: [string, 'null'], enum: [pagado, reembolsado, dividido, null] }
+      resuelto_en: { type: [string, 'null'], format: date-time }
+
+  MercadoPagoEvent:
+    x-source: doc 08 §6, doc 04 §6.2 (idempotencia del webhook)
+    description: Evento de MercadoPago deduplicado por event-id. [APPEND-ONLY].
+    type: object
+    required: [id, payload]
+    properties:
+      id: { type: string, description: 'event-id de MercadoPago (dedup, anti-replay)' }
+      pago_id: { type: [string, 'null'] }
+      payload: { type: object, additionalProperties: true }
+      procesado_en: { type: string, format: date-time }
+
+  AdminAction:
+    x-source: doc 08 §8, doc 01 §1.4 (maker-checker)
+    description: Acción administrativa con doble autorización. [APPEND-ONLY]. maker ≠ checker.
+    type: object
+    required: [id, tipo, objetivo, motivo, maker_id]
+    properties:
+      id: { type: string }
+      tipo: { type: string, description: 'suspender|congelar|reverso|correccion|...' }
+      objetivo: { type: string, description: 'id del recurso afectado' }
+      motivo: { type: string, description: 'obligatorio' }
+      maker_id: { type: string }
+      checker_id: { type: [string, 'null'], description: 'NULL hasta la 2ª autorización' }
+      creado_en: { type: string, format: date-time }
