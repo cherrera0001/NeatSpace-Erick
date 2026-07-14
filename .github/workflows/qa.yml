@@ -33,6 +33,20 @@ jobs:
       # Falla si los tipos committeados quedaron desincronizados del contrato.
       - run: git diff --exit-code types/openapi.ts
 
+  server-build:
+    name: Stub NestJS compila
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+
   migrate:
     name: Migraciones (PostgreSQL + PostGIS)
     runs-on: ubuntu-latest
