@@ -1,0 +1,103 @@
+<meta name="author" content="Erick — NeatSpace Technologies SpA">
+<style>
+  @page {
+    size: A4;
+    margin: 22mm 20mm 24mm 20mm;
+  }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Georgia", "Cambria", "Times New Roman", serif;
+    font-size: 11.2pt;
+    line-height: 1.56;
+    color: #17181a;
+    text-align: justify;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Encabezados */
+  h1, h2, h3, h4 {
+    font-family: "Georgia", "Cambria", serif;
+    color: #0f1113;
+    line-height: 1.22;
+    text-align: left;
+    break-after: avoid;
+  }
+  h1 {
+    font-size: 25pt;
+    text-align: center;
+    break-before: page;
+    margin: 2.4em 0 .5em;
+    letter-spacing: .01em;
+  }
+  h1:first-of-type {           /* Portada */
+    break-before: avoid;
+    margin-top: 3.2em;
+    font-size: 34pt;
+  }
+  h2 {                          /* Capítulos y secciones de front/back matter */
+    font-size: 16.5pt;
+    break-before: page;
+    margin: 0 0 .6em;
+    padding-bottom: .28em;
+    border-bottom: 1px solid #d8dadd;
+  }
+  h3 {
+    font-size: 12.6pt;
+    margin: 1.5em 0 .35em;
+    color: #26292d;
+  }
+  h4 {
+    font-size: 11.5pt;
+    text-align: center;
+    letter-spacing: .04em;
+    color: #55595e;
+    font-weight: 600;
+    margin: .2em 0 1em;
+  }
+
+  p { margin: 0 0 .72em; orphans: 2; widows: 2; }
+
+  /* Citas / pull quotes */
+  blockquote {
+    margin: 1.1em 0;
+    padding: .35em 0 .35em 1.1em;
+    border-left: 3px solid #b9723a;
+    color: #3a3d42;
+    font-style: italic;
+    break-inside: avoid;
+  }
+  blockquote strong { font-style: normal; color: #17181a; }
+
+  /* Listas */
+  ul, ol { margin: 0 0 .85em 1.35em; padding: 0; }
+  li { margin: .2em 0; break-inside: avoid; }
+
+  /* Enlaces (índice / anclas): sin azul chillón en papel */
+  a { color: inherit; text-decoration: none; }
+
+  hr {
+    border: 0;
+    border-top: 1px solid #dcdfe3;
+    margin: 1.7em 0;
+  }
+
+  code, pre { font-family: "Consolas", "Courier New", monospace; font-size: 9.6pt; }
+
+  .pagebreak { break-before: page; }
+
+  /* Notas al pie */
+  .footnotes {
+    font-size: 9.6pt;
+    color: #4a4d52;
+    border-top: 1px solid #dcdfe3;
+    margin-top: 2.2em;
+    padding-top: .4em;
+  }
+  .footnotes hr { display: none; }
+
+  sup { font-size: .72em; }
+</style>
