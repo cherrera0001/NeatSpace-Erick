@@ -1,0 +1,15 @@
+{
+  "name": "neatspace-specs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contratos spec-driven de NeatSpace (OpenAPI/AsyncAPI) y sus gates de calidad.",
+  "scripts": {
+    "lint:openapi": "spectral lint specs/openapi.yaml",
+    "lint:asyncapi": "spectral lint specs/asyncapi.yaml",
+    "lint:specs": "spectral lint specs/openapi.yaml specs/asyncapi.yaml",
+    "qa": "npm run lint:specs"
+  },
+  "devDependencies": {
+    "@stoplight/spectral-cli": "^6.14.2"
+  }
+}

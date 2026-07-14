@@ -1,0 +1,31 @@
+# Ruleset de lint de contratos NeatSpace (SDD).
+# Aplica reglas OpenAPI a openapi.yaml y AsyncAPI a asyncapi.yaml (Spectral
+# selecciona el conjunto según el formato del documento).
+extends:
+  - spectral:oas
+  - spectral:asyncapi
+
+rules:
+  # NeatSpace: toda operación REST debe declarar su origen de diseño (trazabilidad SDD).
+  neatspace-operation-x-source:
+    description: Cada operación debería declarar x-source (doc de diseño que la justifica).
+    message: "{{path}} sin x-source: toda operación debe trazar a un documento de diseño (SDD)."
+    severity: warn
+    given: "$.paths[*][get,post,put,patch,delete]"
+    then:
+      field: x-source
+      function: truthy
+
+  # Estándar NeatSpace: `summary` es obligatorio; `description` solo donde aporta.
+  neatspace-operation-summary:
+    description: Toda operación REST debe tener summary.
+    message: "{{path}} sin summary."
+    severity: error
+    given: "$.paths[*][get,post,put,patch,delete]"
+    then:
+      field: summary
+      function: truthy
+
+  # Estandarizamos en `summary` (obligatorio) → no exigimos `description` en cada op.
+  operation-description: off
+  asyncapi-3-operation-description: off

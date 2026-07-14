@@ -379,7 +379,7 @@ paths:
       x-source: doc 03 §10, §11
       parameters: [ { $ref: '#/components/parameters/PathId' } ]
       responses:
-        '200': { description: Entrega confirmada, escrow liberado }
+        '200': { description: "Entrega confirmada, escrow liberado" }
   /agreements/{id}/cancel:
     post:
       tags: [SalaDeAcuerdo]

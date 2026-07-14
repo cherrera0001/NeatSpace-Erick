@@ -2,6 +2,13 @@ asyncapi: 3.0.0
 info:
   title: NeatSpace — Eventos de Dominio
   version: 0.1.0
+  contact:
+    name: NeatSpace
+  license:
+    name: Propietario
+  tags:
+    - name: dominio
+      description: Eventos de dominio del monolito modular.
   description: |
     Contrato asíncrono de NeatSpace. Cada módulo del monolito modular
     (`identidad`, `oportunidades`, `neatmatch`, `sala_acuerdo`, `neatwallet`,

@@ -154,6 +154,7 @@
 - **MercadoPago simulado:** sandbox + firmador HMAC de prueba para webhooks; nunca credenciales reales en CI.
 - **Ambientes:** `local` → `ci` (efímero) → `staging` (sandbox PSP) → `prod`. Migraciones derivadas del MR (doc 08), versionadas.
 - **Gates de CI (bloquean merge):** lint specs (Spectral) · unit+integración verdes · cobertura mínima · tests de seguridad dirigidos · smoke E2E de CU críticos. Performance corre en pipeline nocturno/pre-release, no en cada PR.
+  - ✅ **Lint ya implementado:** ruleset `.spectral.yaml` (OAS+AsyncAPI + reglas propias: `x-source` y `summary` obligatorios) y workflow `.github/workflows/qa.yml` (`npm run lint:specs`). Falla solo ante severidad **error**; hoy: **0 errores** en ambos contratos.
 
 ---
 
