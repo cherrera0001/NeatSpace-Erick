@@ -38,11 +38,15 @@ npm start          # node dist/main.js  → escucha en :3000 (PORT configurable)
   ("Nest application successfully started").
 - ✅ **Comportamiento verificado** por HTTP: los handlers responden `501`; el guard
   de idempotencia responde `400` sin `Idempotency-Key` y deja pasar con ella.
+- ✅ **Validación de DTOs** (`class-validator` + `ValidationPipe`, 422 en error
+  semántico): cuerpo inválido → 422, válido → 501. Cubierto por `src/app.e2e.spec.ts`.
+- ✅ **Lógica de dominio** (`src/domain/`) con **23 tests Vitest en verde** (dinero,
+  trust score, hash de reputación, estados). Vitest usa SWC (`vitest.config.ts`) para
+  emitir metadata de decoradores.
 
 ## Próximos pasos (implementación)
 
-1. DTOs con `class-validator` a partir de los schemas del contrato (o de `types/openapi.ts`).
-2. Capa de persistencia sobre el esquema de `db/migrations` (TypeORM/Prisma/pg).
+1. Capa de persistencia sobre el esquema de `db/migrations` (TypeORM/Prisma/pg).
 3. Implementar cada handler siguiendo su CU; añadir los tests de `docs/10` (unit,
    contrato, integración, seguridad) por endpoint.
 4. Guards/estrategias de auth (JWT), verificación HMAC del webhook, RBAC.

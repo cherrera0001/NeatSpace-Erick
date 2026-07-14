@@ -6,6 +6,7 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
+import { PriceOfferDto } from './dto';
 
 // Contexto Sala de Acuerdo + ejecución del servicio (doc 07 §1).
 
@@ -25,7 +26,7 @@ export class AgreementsController {
 
   /** CU-13 · Contraoferta con justificación (422 si falta). */
   @Post(':id/price-offers')
-  priceOffer(@Param('id') _id: string, @Body() _b: unknown): never {
+  priceOffer(@Param('id') _id: string, @Body() _b: PriceOfferDto): never {
     throw new NotImplementedException('CU-13 · makePriceOffer');
   }
 

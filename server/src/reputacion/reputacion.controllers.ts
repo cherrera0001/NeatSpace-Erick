@@ -6,6 +6,7 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
+import { ReviewDto } from './dto';
 
 // Contexto Reputación (doc 07 §1). RN-5, RN-8, IN-4, IN-8.
 
@@ -13,7 +14,7 @@ import {
 export class ServicesReviewController {
   /** CU-29 · Evaluar (double-blind). RN-5: 409 si no pagado. Cuerpo sin 0-100. */
   @Post(':id/reviews')
-  createReview(@Param('id') _id: string, @Body() _b: unknown): never {
+  createReview(@Param('id') _id: string, @Body() _b: ReviewDto): never {
     throw new NotImplementedException('CU-29 · createReview');
   }
 }

@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { IdempotencyKeyGuard } from '../common/idempotency-key.guard';
+import { TopupDto, WithdrawDto } from './dto';
 
 // Contexto NeatWallet + webhooks (doc 07 §1). Dinero: RN-1..4, IN-2.
 
@@ -24,14 +25,14 @@ export class WalletController {
   /** CU-21 · Abonar vía MercadoPago. RN-1 (Idempotency-Key); RN-3 (no asienta). */
   @Post('topup')
   @UseGuards(IdempotencyKeyGuard)
-  topup(@Body() _b: unknown): never {
+  topup(@Body() _b: TopupDto): never {
     throw new NotImplementedException('CU-21 · topup');
   }
 
   /** CU-25 · Retiro a banco (2FA + KYC). RN-1. */
   @Post('withdraw')
   @UseGuards(IdempotencyKeyGuard)
-  withdraw(@Body() _b: unknown): never {
+  withdraw(@Body() _b: WithdrawDto): never {
     throw new NotImplementedException('CU-25 · withdraw');
   }
 

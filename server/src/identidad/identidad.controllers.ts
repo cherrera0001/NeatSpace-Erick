@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { RegisterDto, LoginDto } from './dto';
 
 // Contexto Identidad (doc 07 §1). Rutas 1-a-1 con specs/openapi.yaml.
 
@@ -14,13 +15,13 @@ import {
 export class AuthController {
   /** CU-01 · Registrarse (Usuario+NeatProfile+NeatWallet, atómico). */
   @Post('register')
-  register(@Body() _body: unknown): never {
+  register(@Body() _body: RegisterDto): never {
     throw new NotImplementedException('CU-01 · register');
   }
 
   /** CU-02 · Iniciar sesión. */
   @Post('login')
-  login(@Body() _body: unknown): never {
+  login(@Body() _body: LoginDto): never {
     throw new NotImplementedException('CU-02 · login');
   }
 }
