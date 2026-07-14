@@ -81,7 +81,21 @@ graph TB
 | CU-34 | Acción administrativa (maker-checker) | Administrador | *(interno)* | — |
 | CU-35 | Apelar sanción | Usuario | *(interno → ReputationLog)* | — |
 
-> **Endpoints sin CU** o **CU sin endpoint** son *hallazgos de trazabilidad*: CU-10, CU-28, CU-33, CU-34, CU-35 aún no tienen endpoint público explícito en `openapi.yaml` (son internos o de dispatch). Se registran aquí para cerrar la matriz en el paso de trazabilidad (doc futuro).
+> **Endpoints sin CU** o **CU sin endpoint** son *hallazgos de trazabilidad*: CU-10, CU-28, CU-33, CU-34, CU-35 aún no tienen endpoint público explícito en `openapi.yaml` (son internos o de dispatch). Se registran aquí para cerrar la matriz en el paso de trazabilidad (doc 09).
+
+### 2.1 Casos de uso complementarios (completitud — backlog / jobs)
+
+El catálogo núcleo (CU-01..35) cubre el MVP. Estos CU **completan** el ciclo de vida y aún no tienen contrato en `specs/` — se exponen al implementar su módulo:
+
+| ID | Caso de uso | Actor | Estado |
+|---|---|---|---|
+| CU-36 | Recuperar acceso · cerrar sesión · refrescar token | Usuario | endpoints de auth pendientes en `openapi.yaml` |
+| CU-37 | Aceptar términos y **consentimiento de datos** (Ley 21.719) en el onboarding | Usuario | requisito legal; falta CU/endpoint |
+| CU-38 | Administrar empresa, miembros y permisos (NeatBusiness) | Empresa (admin) | escribe `empresa_miembro`; NeatBusiness sin detallar |
+| CU-39 | Cerrar ventana double-blind y publicar evaluaciones | Scheduler | job → `EvaluacionEnviada` |
+| CU-40 | Decaimiento de reputación (checkpoint `decay`) | Scheduler | job → `reputation_log` |
+| CU-41 | Generar oportunidades recurrentes | Scheduler | job → `OportunidadCreada` |
+| CU-42 | Auto-liberación de escrow por vencimiento de ventana | Scheduler | job → `release` / `EscrowLiberado` |
 
 ---
 

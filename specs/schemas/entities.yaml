@@ -350,3 +350,19 @@ $defs:
       maker_id: { type: string }
       checker_id: { type: [string, 'null'], description: 'NULL hasta la 2ª autorización' }
       creado_en: { type: string, format: date-time }
+
+  DocumentoTributario:
+    x-source: doc 08 §8, doc 07 §3.4, doc 01 §2.5 (Ley 21.713/SII)
+    description: Boleta/factura + retención emitida en la liberación. [APPEND-ONLY]. Gancho legal a validar.
+    type: object
+    required: [id, tipo, monto_bruto]
+    properties:
+      id: { type: string }
+      transaccion_id: { type: [string, 'null'], description: 'liberación que lo origina' }
+      emisor_id: { type: [string, 'null'] }
+      receptor_id: { type: [string, 'null'] }
+      tipo: { type: string, description: 'boleta|factura|nota_credito' }
+      monto_bruto: { type: integer }
+      retencion: { type: integer, description: 'retención previsional/SII' }
+      folio_sii: { type: [string, 'null'] }
+      emitido_en: { type: string, format: date-time }

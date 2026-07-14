@@ -16,7 +16,7 @@ El monolito modular (doc 01 §2.2) se organiza en contextos; cada uno **posee** 
 | **Oportunidades** | `oportunidad`, `oportunidad_recurrente` | `OportunidadCreada` |
 | **NeatMatch** | `aceptacion_urgente`, `match_impression` | `OportunidadTomada` |
 | **Sala de Acuerdo** | `acuerdo`, `acuerdo_version`, `price_offer`, `mensaje` | `AcuerdoAceptado`, `TrabajoEntregado`, … |
-| **NeatWallet** | `neatwallet`, `transaccion`, `ledger_entry`, `pago`, `mercadopago_event` | `EscrowLiberado`, `ReembolsoEmitido`, … |
+| **NeatWallet** | `neatwallet`, `transaccion`, `ledger_entry`, `pago`, `mercadopago_event`, `documento_tributario` | `EscrowLiberado`, `ReembolsoEmitido`, … |
 | **Reputación** | `evaluacion`, `reputation_log`, `trust_score` | `EvaluacionEnviada` |
 | **Conflictos / Gobernanza** | `disputa`, `admin_action` | — |
 
@@ -52,8 +52,9 @@ erDiagram
   ACUERDO ||--o{ TRANSACCION : "referencia_dominio"
   TRANSACCION ||--|{ LEDGER_ENTRY : "asientos (>=2, balanceados)"
   NEATWALLET ||--o{ LEDGER_ENTRY : "afecta saldo"
-  ACUERDO ||--o| PAGO : "cargo asociado"
+  ACUERDO ||--o{ PAGO : "cargos de retención (topup no lleva acuerdo)"
   PAGO ||--o{ MERCADOPAGO_EVENT : "webhooks (dedup)"
+  TRANSACCION ||--o| DOCUMENTO_TRIBUTARIO : "liberación → boleta/factura"
 
   ACUERDO ||--o{ EVALUACION : "servicio pagado habilita"
   USUARIO ||--o{ EVALUACION : "evaluador"
@@ -99,8 +100,9 @@ erDiagram
 - **neatwallet** — `id`, `tipo {usuario|empresa|sistema}`, `usuario_id?`, `empresa_id?`, `rol_sistema? {escrow|comision|pasarela|reembolsos|recupero|costo_psp}`, `moneda`. **CHECK XOR** de identidad.
 - **transaccion** — `id`, `tipo {topup|retencion|liberacion|reembolso|reverso|retiro}`, `referencia_dominio`, `idempotency_key` (UQ). Invariante Σ débitos = Σ créditos.
 - **ledger_entry** — `id`, `transaccion_id`, `wallet_id`, `direccion {debito|credito}`, `monto`, `concepto`. **Append-only** (sin UPDATE/DELETE). El saldo es su proyección.
-- **pago** — `id`, `mp_payment_id`, `estado {pendiente|confirmado|fallido|reembolsado|contracargo}`, `monto`.
+- **pago** — `id`, `acuerdo_id?` (**opcional**: un *topup* de billetera no está atado a ningún acuerdo; solo los cargos de retención lo llevan), `mp_payment_id`, `estado {pendiente|confirmado|fallido|reembolsado|contracargo}`, `monto`.
 - **mercadopago_event** — `id` (event-id UQ para dedup), `pago_id`, `payload`, `procesado_en`. Idempotencia del webhook.
+- **documento_tributario** — `id`, `transaccion_id` (liberación que lo origina), `emisor_id`, `receptor_id`, `tipo {boleta|factura|nota_credito}`, `monto_bruto`, `retencion`, `folio_sii`. **Append-only**. Gancho legal Ley 21.713/SII (doc 01 §2.5) — a validar con contador.
 
 ### 3.5 Reputación
 

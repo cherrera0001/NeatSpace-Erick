@@ -41,7 +41,7 @@
 | TC-U07 | Peso `ω_evaluador` **acotado por techo** | doc 05 §4.3 | cuenta de score alto no supera el tope; sin bucle. |
 | TC-U08 | Hash de cadena: `hash_actual = H(hash_prev ‖ payload)` | IN-8 | recomputo reproduce la cadena. |
 | TC-U09 | Máquina de estados del Acuerdo: transiciones válidas/ inválidas | doc 07 §4 | ACORDADO→ENTREGADO ok; PROPUESTA→CERRADO rechazado. |
-| TC-U10 | `num_nonnull` para XOR de billetera | IN-1 | (u,·,·)=1 ok; (u,e,·)=2 rechazado. |
+| TC-U10 | XOR de identidad de billetera (CHECK explícito booleano) | IN-1 | (u,·,·) ok; (u,e,·) rechazado; (·,·,·) rechazado. |
 | TC-U11 | Enmienda que sube/baja precio ajusta retención | doc 04 §10 | sube→retención extra; baja→devolución. |
 | TC-U12 | Decay: sanción grave de seguridad **no** expira como rating | doc 05 §6 | ω_recencia no elimina sanción de riesgo. |
 
@@ -98,6 +98,7 @@
 | TC-S10 | No repudio: `acuerdo_aceptacion` registra método de verificación | doc 03 §4.1 | step-up obligatorio sobre umbral. |
 | TC-S11 | Alteración de `reputation_log` rompe la cadena y se detecta | IN-8 | auditoría marca discontinuidad de hash. |
 | TC-S12 | Maker-checker: misma persona no puede aprobar su propia acción | RN-9 | `checker_id ≠ maker_id` (CHECK). |
+| TC-S13 | **Derecho de datos (Ley 21.719):** *tombstone* de PII/comentario sin romper la cadena de hash | doc 05 §3, IN-8 | texto redactado; `hash_actual` intacto; señal numérica preservada. |
 
 ---
 

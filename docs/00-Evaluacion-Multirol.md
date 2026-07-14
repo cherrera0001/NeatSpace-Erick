@@ -15,6 +15,11 @@ Se ejecuto un ciclo de evaluacion multirol sobre los entregables de NeatSpace. E
 | docs/03-Sala-de-Acuerdo.md | Cerrado sin cambios pendientes (con mejoras aplicadas) | 18 |
 | docs/04-NeatWallet.md | Cerrado sin cambios pendientes (con mejoras aplicadas) | 6 |
 | docs/05-Trust-Score.md | Cerrado sin cambios pendientes (con mejoras aplicadas) | 7 |
+| docs/06-Casos-de-Uso.md | Cerrado (con mejoras aplicadas) | 1 |
+| docs/07-MER.md | Cerrado (con mejoras aplicadas) | 3 |
+| docs/08-MR.md | Cerrado (con mejoras aplicadas) | 6 |
+| docs/09-Trazabilidad.md | Cerrado (con mejoras aplicadas) | 2 |
+| docs/10-QA-Testing.md | Cerrado (con mejoras aplicadas) | 2 |
 | Manifiesto-Editado.md | Cerrado sin cambios pendientes (con mejoras aplicadas) | 6 |
 
 ## Cambios aplicados
@@ -105,3 +110,23 @@ Se ejecuto un ciclo de evaluacion multirol sobre los entregables de NeatSpace. E
 4. **Cap. 18:** marca de provenance tras la Declaracion del Fundador. Verificado contra Manifiesto.md linea 1747 (corta en "cada linea de codigo esc").
 5. **Cap. 19:** restituido el bloque "El compromiso con la comunidad" con las seis promesas publicas de NeatSpace (contenido real, Manifiesto.md lineas 1806-1814).
 6. **Cap. 23:** reintroducida la mencion del organo responsable del filtro del proposito (Comite del Proposito / Consejo de Innovacion, Cap. 4), contenido real del original (lineas 2178-2189).
+
+### Paquete base de diseño 06-10 (loop multirol, lentes DBA/contabilidad/seguridad/legal/producto/QA)
+
+**docs/08-MR.md (6 cambios):**
+1. **Bug corregido — CHECK XOR de billetera:** `num_nonnull(VARIADIC anyarray)` no admite tipos mixtos (uuid+uuid+enum); reemplazado por forma booleana explícita `(usuario_id IS NOT NULL)::int + ... = 1`.
+2. **Extensión faltante:** `CREATE EXTENSION citext` (requerida por `usuario.email citext`).
+3. **Índices de FK:** añadidos (cliente/categoria/profesional/evaluador/pago/disputa); nota DBA — PostgreSQL no indexa FKs automáticamente.
+4. **Montos:** nota de usar `bigint` si se prevén montos B2B/licitaciones > ~2.100 millones.
+5. **Tabla `documento_tributario`** (Ley 21.713/SII) con trigger append-only y gancho legal marcado.
+6. Coherencia de la nota `num_nonnull` (caveat de tipos).
+
+**docs/07-MER.md (3 cambios):** cardinalidad de `pago` corregida (un *topup* no lleva acuerdo; `acuerdo_id` opcional); entidad `documento_tributario` añadida al contexto NeatWallet y al diagrama ER; relación `TRANSACCION → DOCUMENTO_TRIBUTARIO`.
+
+**docs/06-Casos-de-Uso.md (1 cambio):** §2.1 casos complementarios (CU-36 recuperación/logout, CU-37 consentimiento de datos Ley 21.719, CU-38 admin NeatBusiness, CU-39..42 jobs del Scheduler: double-blind, decay, recurrentes, auto-liberación).
+
+**docs/09-Trazabilidad.md (2 cambios):** conteo de tablas corregido; gaps añadidos (consentimiento, documento_tributario, CU complementarios).
+
+**docs/10-QA-Testing.md (2 cambios):** TC-U10 alineado al CHECK explícito; TC-S13 nuevo (tombstone de PII sin romper hash, Ley 21.719).
+
+**specs/schemas/entities.yaml:** reconciliada `DocumentoTributario` (28 entidades).

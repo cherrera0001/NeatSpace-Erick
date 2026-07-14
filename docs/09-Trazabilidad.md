@@ -71,7 +71,7 @@ Los 35 paths de `openapi.yaml` mapean a CU-01..09, 11..27, 29..32. **Sin endpoin
 
 ## 4. Índice inverso: tabla → CU (detección de datos huérfanos)
 
-Las 27 tablas del MR aparecen en ≥1 CU. **Sin CU de escritura directa aún:** `empresa_miembro` (alta de equipos NeatBusiness — CU futuro de administración de empresa) y `oportunidad_recurrente` (escrita por CU-05 alterno). Se registran como *gaps menores* a cubrir cuando se detalle NeatBusiness.
+Las tablas del MR aparecen en ≥1 CU. **Sin CU de escritura directa aún:** `empresa_miembro` (CU-38, NeatBusiness), `documento_tributario` (se emite en la liberación, CU-17/23 — gancho fiscal a detallar) y `oportunidad_recurrente` (CU-41). Se registran como *gaps* a cubrir al detallar esos módulos.
 
 ---
 
@@ -82,6 +82,9 @@ Las 27 tablas del MR aparecen en ≥1 CU. **Sin CU de escritura directa aún:** 
 | CU-10, 28, 33, 34, 35 sin endpoint público | Internos / jobs / dispatch | Definir contrato interno o AsyncAPI cuando se implementen. |
 | `empresa_miembro` sin CU de escritura | NeatBusiness sin detallar | CU de administración de empresa (backlog). |
 | `EmpresaMiembro`/`Postulacion`/`Disputa`/… recién reconciliadas | Nuevas en `entities.yaml` | Falta exponerlas en endpoints/eventos donde aplique. |
+| CU-37 consentimiento de datos sin contrato | Requisito Ley 21.719 | Definir onboarding + endpoint de consentimiento. |
+| `documento_tributario` sin flujo de emisión | Gancho fiscal Ley 21.713/SII | Definir servicio de emisión al liberar (CU-17/23). |
+| CU-36, 38–42 (auth extra, NeatBusiness, jobs) | Complementarios (doc 06 §2.1) | Contrato al implementar cada módulo. |
 
 ---
 
