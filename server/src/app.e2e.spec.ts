@@ -5,9 +5,9 @@ import request from 'supertest';
 import { AppModule } from './app.module';
 import { configureApp } from './app.config';
 
-// e2e sin BD: la validación corre en el ValidationPipe ANTES del handler (que es
-// un stub 501). Verifica el contrato de entrada: cuerpo inválido → 422; el guard
-// de idempotencia (RN-1) corre antes del pipe → 400.
+// e2e sin BD: la validación corre en el ValidationPipe / guards ANTES de tocar la
+// BD. Verifica el contrato de entrada: cuerpo inválido → 422; guard de idempotencia
+// (RN-1) → 400; validaciones de negocio previas a la query → 400.
 
 describe('Validación de contrato (e2e)', () => {
   let app: INestApplication;
@@ -27,6 +27,12 @@ describe('Validación de contrato (e2e)', () => {
 
   it('register inválido (email/pass) → 422', () =>
     http().post('/v1/auth/register').send({ email: 'no-email', password: '123' }).expect(422));
+
+  it('register con carácter de control (NUL) en nombre → 400, no 500', () =>
+    http()
+      .post('/v1/auth/register')
+      .send({ email: 'x@demo.cl', password: 'secreto8', nombre: 'a' + String.fromCharCode(0) + 'b' })
+      .expect(400));
 
   // El happy-path de register/login es DB-backed → se verifica en CI (job `stack`,
   // docker compose con Postgres real), no en este e2e sin BD.

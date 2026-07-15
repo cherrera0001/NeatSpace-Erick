@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -7,6 +8,10 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { DbService } from '../db/db.service';
 import { RegisterDto, LoginDto } from './dto';
+
+// Hash "señuelo" precomputado: se compara contra él cuando el email NO existe,
+// para que el login tarde lo mismo exista o no (evita user-enumeration por timing).
+const DUMMY_HASH = bcrypt.hashSync('neatspace-dummy-password', 10);
 
 // CU-01/CU-02. Registro crea Usuario + NeatProfile + NeatWallet de forma ATÓMICA
 // (una transacción). Las contraseñas se guardan hasheadas (bcrypt); nunca en claro.
@@ -18,6 +23,7 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<{ token: string; usuario: unknown }> {
+    assertNoControlChars(dto.nombre); // 0x00-0x1F rompería el INSERT en text (→ 500)
     const hash = await bcrypt.hash(dto.password, 10);
     const usuario = await this.db.tx(async (c) => {
       // Pre-check (camino feliz); la unicidad REAL la garantiza el UNIQUE de la BD.
@@ -62,7 +68,11 @@ export class AuthService {
       [dto.email],
     );
     const row = r.rows[0];
-    if (!row || !(await bcrypt.compare(dto.password, row.password_hash))) {
+    // Siempre se ejecuta un bcrypt.compare (contra el hash real o el señuelo) → tiempo
+    // constante; no se puede inferir si el email existe por la latencia.
+    const hash = (row?.password_hash as string | undefined) ?? DUMMY_HASH;
+    const ok = await bcrypt.compare(dto.password, hash);
+    if (!row || !ok) {
       throw new UnauthorizedException('credenciales inválidas');
     }
     return {
@@ -73,6 +83,17 @@ export class AuthService {
 
   private sign(sub: string): Promise<string> {
     return this.jwt.signAsync({ sub });
+  }
+}
+
+/** Rechaza caracteres de control (0x00-0x1F): PostgreSQL no los admite en columnas text. */
+function assertNoControlChars(s: string): void {
+  for (let i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) < 0x20) {
+      throw new BadRequestException(
+        'nombre contiene caracteres de control invalidos',
+      );
+    }
   }
 }
 
