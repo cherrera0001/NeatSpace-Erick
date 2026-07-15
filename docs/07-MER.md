@@ -1,7 +1,7 @@
 # MER — Modelo Entidad-Relación (conceptual) — NeatSpace
 ### Tomo Técnico VII · El dominio completo en un solo mapa
 
-**Base:** `docs/01-Arquitectura-NeatSpace.md` §1.2–1.4, los deep-dives 03/04/05, los casos de uso de `docs/06` y las entidades de `specs/schemas/entities.yaml` (21 entidades). Este documento es la **vista conceptual/lógica**: entidades, atributos clave, relaciones y cardinalidades, agrupadas por **contexto acotado** (DDD). El detalle físico (tipos, índices, constraints, DDL) vive en `docs/08-MR.md`.
+**Base:** `docs/01-Arquitectura-NeatSpace.md` §1.2–1.4, los deep-dives 03/04/05, los casos de uso de `docs/06` y las entidades de `specs/schemas/entities.yaml` (28 entidades, ya reconciliadas). Este documento es la **vista conceptual/lógica**: entidades, atributos clave, relaciones y cardinalidades, agrupadas por **contexto acotado** (DDD). El detalle físico (tipos, índices, constraints, DDL) vive en `docs/08-MR.md`.
 
 ---
 
@@ -76,7 +76,7 @@ erDiagram
 
 - **usuario** — `id`, `email` (UQ), `estado {activo|suspendido}`, `nivel_verificacion`, `creado_en`. Perfil dual: la faceta cliente/profesional es de comportamiento, no de identidad.
 - **neatprofile** — `id`, `usuario_id` (FK, 1-1), `descripcion`, `habilidades[]`, `cobertura_geo`. Unidad de reputación.
-- **empresa** — `id`, `razon_social`, `wallet_id` (1-1). Miembros vía tabla puente `empresa_miembro` (rol/permisos).
+- **empresa** — `id`, `razon_social`, `giro`. Su billetera se deriva de `neatwallet.empresa_id` (1-1); no hay back-pointer. Miembros vía tabla puente `empresa_miembro` (rol/permisos).
 - **categoria** — `id`, `nombre`, `parent_id` (auto-relación, 4 niveles), `sensible` (bool).
 
 ### 3.2 Oportunidades y matching
@@ -93,7 +93,7 @@ erDiagram
 - **acuerdo_version** — `acuerdo_id`, `n`, `terminos {precio, duracion, materiales, responsabilidades, condiciones}`, `aceptado_*_en`, `metodo_verificacion`. **Snapshot inmutable** (append-only).
 - **price_offer** — `id`, `acuerdo_id`, `autor_id`, `monto`, `justificacion` (**obligatoria**), `creado_en`. Append-only.
 - **mensaje** — `id`, `acuerdo_id`, `autor_id`, `texto`, `leido` (flag acotado, excepción declarada doc 01 §1.4), `alerta_neatai`.
-- **disputa** — `id`, `acuerdo_id`, `abierta_por`, `motivo`, `estado`, `resolucion {pagado|reembolsado|dividido}`.
+- **disputa** — `id`, `acuerdo_id`, `abierta_por`, `motivo`, `evidencia_url`, `resolucion {pagado|reembolsado|dividido}`, `resuelto_en` (el estado de la disputa lo lleva el `acuerdo` vía `EN_DISPUTA`).
 
 ### 3.4 NeatWallet (dinero)
 
@@ -112,7 +112,7 @@ erDiagram
 
 ### 3.6 Gobernanza
 
-- **admin_action** — `id`, `admin_id`, `tipo`, `objetivo`, `motivo` (**obligatorio**), `maker_id`, `checker_id`, `creado_en`. Doble autorización maker-checker; trazable.
+- **admin_action** — `id`, `tipo`, `objetivo`, `motivo` (**obligatorio**), `maker_id`, `checker_id`, `creado_en`. Doble autorización maker-checker (el ejecutor es `maker_id`); trazable.
 
 ---
 
@@ -154,4 +154,4 @@ ENTREGADO/EN_EJECUCION → EN_DISPUTA → {CERRADO | CANCELADO}   (según resolu
 | `acuerdo` como agregado único (servicio≡acuerdo) marcado abierto | ✅ simple | ✅ | ✅ honestidad | ➖ a confirmar |
 | Invariantes IN-1..8 declaradas para el MR | ➖ | ✅✅ | ✅ | ✅ |
 
-> **Siguiente:** `docs/08-MR.md` convierte cada entidad en tabla PostgreSQL/PostGIS con tipos, `CHECK`, `UNIQUE`, FKs, índices (GiST geo, equidad NeatMatch, `trust_score DESC`) y las reglas append-only/hash-chain — DDL-ready. Las entidades nuevas respecto de `entities.yaml` (`postulacion`, `disputa`, `mercadopago_event`, `admin_action`, `empresa_miembro`) se reconcilian de vuelta en el spec.
+> **Siguiente:** `docs/08-MR.md` convierte cada entidad en tabla PostgreSQL/PostGIS con tipos, `CHECK`, `UNIQUE`, FKs, índices (GiST geo, equidad NeatMatch, `trust_score DESC`) y las reglas append-only/hash-chain — DDL-ready. Las entidades nuevas (`postulacion`, `disputa`, `mercadopago_event`, `admin_action`, `empresa_miembro`, `acuerdo_aceptacion`, `documento_tributario`) **ya fueron reconciliadas** en `entities.yaml` (28 $defs).

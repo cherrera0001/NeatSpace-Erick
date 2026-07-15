@@ -130,3 +130,12 @@ Se ejecuto un ciclo de evaluacion multirol sobre los entregables de NeatSpace. E
 **docs/10-QA-Testing.md (2 cambios):** TC-U10 alineado al CHECK explícito; TC-S13 nuevo (tombstone de PII sin romper hash, Ley 21.719).
 
 **specs/schemas/entities.yaml:** reconciliada `DocumentoTributario` (28 entidades).
+
+### Loop multirol sobre el código (workflow multi-agente, 2026-07-14)
+
+Panel adversarial de **6 lentes** (DBA, seguridad, contabilidad, backend, QA, consistencia) sobre migraciones + server + specs, con **verificación adversarial por hallazgo** (31 agentes). **23 confirmados** (0 alta, 9 media, 14 baja). Aplicados:
+
+- **BD:** eliminado back-pointer `empresa.wallet_id`; guard de UPDATE en `admin_action`; índices `mensaje`/`price_offer`; `UNIQUE` parcial en `pago.mp_payment_id`; IN-2 completo (trigger sobre `transaccion` vacía); `CHECK retencion ≤ monto_bruto`; `db/tests/constraints_test.sql` en CI (IN-1/IN-2/IN-3 contra PG real).
+- **Server:** `ServiceAuthGuard` en endpoints internos + `serviceAuth` en OpenAPI; DTOs para 7 cuerpos antes sin validar; guardas defensivas en `bayesianScore` y `agreement-state` (+ tests). 30 tests verdes.
+- **Specs:** 5 operaciones `send` que faltaban en AsyncAPI.
+- **Consistencia documental:** doc 07 (28 entidades, `empresa` sin wallet_id, campos fantasma `admin_id`/`disputa.estado`), doc 06 §4 (RN-2/4/7 sincronizadas con la matriz), doc 08 §7/§10/§12 (reconciliación y `comentario` mutable), doc 09 (eventos de sistema).

@@ -175,12 +175,12 @@ Plantilla: **Actor · Precondiciones · Flujo principal · Alternos · Excepcion
 | # | Regla | CU afectados |
 |---|---|---|
 | RN-1 | Toda escritura de dinero exige `Idempotency-Key` (400 si falta). | CU-21..25 |
-| RN-2 | La comisión (20%) se deriva **server-side**; jamás viaja en el request. | CU-23 |
+| RN-2 | La comisión (20%) se deriva **server-side**; jamás viaja en el request. | CU-17, CU-23, CU-24 |
 | RN-3 | El webhook de MercadoPago es la fuente de verdad; `/pay`/`/topup` solo inician. | CU-21, CU-26 |
-| RN-4 | Liberación **solo** con confirmación dual o ventana vencida; nunca unilateral. | CU-17, CU-23 |
+| RN-4 | Liberación **solo** con confirmación dual o ventana vencida; nunca unilateral. | CU-14, CU-17, CU-23 |
 | RN-5 | Sin servicio **pagado** no hay evaluación (409). | CU-29 |
 | RN-6 | Geolocalización enmascarada; dirección exacta solo con acuerdo aceptado / urgente asignado. | CU-05, CU-06, CU-14 |
-| RN-7 | Anti-IDOR: cada recurso valida pertenencia; endpoints internos no se exponen. | CU-27, CU-30 |
+| RN-7 | Anti-IDOR: cada recurso valida pertenencia; endpoints internos no se exponen. | CU-03, CU-08, CU-09, CU-27, CU-30 |
 | RN-8 | Reputación derivada del log append-only; no hay campo seteable. | CU-29, CU-31 |
 | RN-9 | Acciones administrativas relevantes: doble autorización maker-checker + trazables. | CU-24, CU-33, CU-34 |
 | RN-10 | NeatAI solo advierte/sugiere; no ejecuta acciones sin revisión humana. | CU-19, CU-33 |

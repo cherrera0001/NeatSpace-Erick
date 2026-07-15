@@ -10,7 +10,7 @@ CREATE TABLE evaluacion (
   estrellas    smallint NOT NULL CHECK (estrellas BETWEEN 1 AND 5),
   atributos    jsonb NOT NULL DEFAULT '{}',
   comentario   text,                     -- moderado + PII-limpio antes de visible
-  visible      boolean NOT NULL DEFAULT false,   -- double-blind (único campo mutable)
+  visible      boolean NOT NULL DEFAULT false,   -- double-blind (mutable; comentario también, por moderación/tombstone PII)
   creado_en    timestamptz NOT NULL DEFAULT now(),
   UNIQUE (servicio_id, evaluador_id),     -- IN-4
   CHECK (evaluador_id <> evaluado_id)
