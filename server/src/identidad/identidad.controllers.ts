@@ -8,6 +8,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { RegisterDto, LoginDto } from './dto';
+import { DbService } from '../db/db.service';
 
 // Contexto Identidad (doc 07 §1). Rutas 1-a-1 con specs/openapi.yaml.
 
@@ -28,10 +29,15 @@ export class AuthController {
 
 @Controller('categories')
 export class CategoriesController {
-  /** CU-04 · Explorar categorías. */
+  constructor(private readonly db: DbService) {}
+
+  /** CU-04 · Explorar categorías (slice implementado: lee de la BD). */
   @Get()
-  list(): never {
-    throw new NotImplementedException('CU-04 · categories');
+  async list(): Promise<unknown[]> {
+    const { rows } = await this.db.query(
+      'SELECT id, nombre, parent_id, nivel, sensible FROM categoria ORDER BY nivel, nombre',
+    );
+    return rows;
   }
 }
 

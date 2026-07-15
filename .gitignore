@@ -21,6 +21,7 @@ Thumbs.db
 /gen/
 openapi.html
 asyncapi.html
+api-docs.html
 
 # Logs
 *.log

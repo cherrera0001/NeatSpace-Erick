@@ -8,6 +8,7 @@
     "lint:asyncapi": "spectral lint specs/asyncapi.yaml",
     "lint:specs": "spectral lint specs/openapi.yaml specs/asyncapi.yaml",
     "gen:types": "openapi-typescript specs/openapi.yaml -o types/openapi.ts",
+    "docs:api": "npx --yes @redocly/cli@latest build-docs specs/openapi.yaml -o api-docs.html",
     "qa": "npm run lint:specs"
   },
   "devDependencies": {
