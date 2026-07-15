@@ -1,4 +1,6 @@
--- Datos de demostración para el stack local (idempotente: se puede correr varias veces).
+-- Datos de demostración para el stack local. El SEED es idempotente (ON CONFLICT);
+-- el paso de migraciones que lo antecede se protege con una guarda de esquema en
+-- docker-compose (no reaplica migraciones si las tablas ya existen).
 
 -- Cuentas de sistema del ledger (una por rol)
 INSERT INTO neatwallet (tipo, rol_sistema) VALUES

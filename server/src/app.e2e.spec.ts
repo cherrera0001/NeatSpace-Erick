@@ -28,11 +28,8 @@ describe('Validación de contrato (e2e)', () => {
   it('register inválido (email/pass) → 422', () =>
     http().post('/v1/auth/register').send({ email: 'no-email', password: '123' }).expect(422));
 
-  it('register válido → 501 (pasa validación, llega al stub)', () =>
-    http()
-      .post('/v1/auth/register')
-      .send({ email: 'ana@ejemplo.cl', password: 'secreto8', nombre: 'Ana' })
-      .expect(501));
+  // El happy-path de register/login es DB-backed → se verifica en CI (job `stack`,
+  // docker compose con Postgres real), no en este e2e sin BD.
 
   it('topup sin Idempotency-Key → 400 (guard antes del pipe, RN-1)', () =>
     http().post('/v1/wallet/topup').send({ monto: 1000 }).expect(400));

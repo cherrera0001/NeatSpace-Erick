@@ -8,6 +8,9 @@ import { INestApplication, ValidationPipe, HttpStatus } from '@nestjs/common';
  *   semántico (Unprocessable Entity), coherente con el contrato.
  */
 export function configureApp(app: INestApplication): void {
+  // CORS abierto para que el panel de pruebas (public/index.html) pueda llamar a la API
+  // desde el navegador (file:// u otro origen). En producción, restringir a los orígenes reales.
+  app.enableCors();
   app.setGlobalPrefix('v1');
   app.useGlobalPipes(
     new ValidationPipe({

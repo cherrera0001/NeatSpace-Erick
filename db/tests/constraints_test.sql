@@ -67,4 +67,63 @@ BEGIN
   END;
 END $$;
 
+-- ── IN-2 (transacción vacía): una transaccion sin asientos debe fallar ───────
+DO $$
+DECLARE tx uuid;
+BEGIN
+  INSERT INTO transaccion (tipo, idempotency_key) VALUES ('topup','k-vacia') RETURNING id INTO tx;
+  SET CONSTRAINTS ALL IMMEDIATE;   -- fuerza check_tx_complete
+  RAISE EXCEPTION 'FALLO TC-I02b: se aceptó una transacción sin asientos';
+EXCEPTION WHEN raise_exception THEN
+  IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+  RAISE NOTICE 'OK TC-I02b: transacción vacía rechazada (%).', SQLERRM;
+END $$;
+
+-- ── RN-9: admin_action self-approval (checker = maker) ───────────────────────
+DO $$
+BEGIN
+  INSERT INTO admin_action (tipo, objetivo, motivo, maker_id, checker_id)
+    VALUES ('suspender','obj','prueba',
+            '11111111-1111-1111-1111-111111111111',
+            '11111111-1111-1111-1111-111111111111');
+  RAISE EXCEPTION 'FALLO: admin_action aceptó checker = maker';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'OK: admin_action rechaza self-approval';
+END $$;
+
+-- ── RN-9: admin_action append-only salvo checker_id (mutar motivo se bloquea) ─
+DO $$
+DECLARE aid uuid;
+BEGIN
+  INSERT INTO admin_action (tipo, objetivo, motivo, maker_id)
+    VALUES ('congelar','obj','prueba','11111111-1111-1111-1111-111111111111') RETURNING id INTO aid;
+  BEGIN
+    UPDATE admin_action SET motivo='otro' WHERE id = aid;
+    RAISE EXCEPTION 'FALLO: admin_action permitió mutar motivo';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+    RAISE NOTICE 'OK: admin_action bloquea mutar motivo (%).', SQLERRM;
+  END;
+END $$;
+
+-- ── Dedup de pago: dos filas con el mismo mp_payment_id se rechazan ──────────
+DO $$
+BEGIN
+  INSERT INTO pago (mp_payment_id, monto) VALUES ('MP-123', 1000);
+  INSERT INTO pago (mp_payment_id, monto) VALUES ('MP-123', 2000);
+  RAISE EXCEPTION 'FALLO: se aceptaron dos pagos con el mismo mp_payment_id';
+EXCEPTION WHEN unique_violation THEN
+  RAISE NOTICE 'OK: pago_mp_uq rechaza mp_payment_id duplicado';
+END $$;
+
+-- ── Fiscal: retención no puede superar el bruto ──────────────────────────────
+DO $$
+BEGIN
+  INSERT INTO documento_tributario (tipo, monto_bruto, retencion)
+    VALUES ('boleta', 1000, 1500);
+  RAISE EXCEPTION 'FALLO: se aceptó retención > monto_bruto';
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'OK: doc_retencion_le_bruto rechaza retención > bruto';
+END $$;
+
 SELECT 'constraints_test: OK' AS resultado;

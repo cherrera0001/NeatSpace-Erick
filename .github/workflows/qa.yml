@@ -100,6 +100,24 @@ jobs:
           body=$(curl -s http://localhost:3000/v1/categories)
           echo "$body"
           echo "$body" | grep -q "Gasfitería"
+      - name: /v1/categories respeta el filtro level del contrato
+        run: |
+          curl -s 'http://localhost:3000/v1/categories?level=2' | grep -q "Gasfitería"
+          if curl -s 'http://localhost:3000/v1/categories?level=1' | grep -q "Gasfitería"; then
+            echo "FALLO: level=1 no filtró (devolvió una categoría de nivel 2)"; exit 1; fi
+      - name: Identidad real — registro + login + credenciales inválidas
+        run: |
+          reg=$(curl -s -w '\n%{http_code}' -X POST http://localhost:3000/v1/auth/register \
+            -H 'Content-Type: application/json' \
+            -d '{"nombre":"CI","email":"ci@demo.cl","password":"secreto8"}')
+          echo "$reg"; echo "$reg" | tail -1 | grep -q 201; echo "$reg" | grep -q '"token"'
+          log=$(curl -s -w '\n%{http_code}' -X POST http://localhost:3000/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"ci@demo.cl","password":"secreto8"}')
+          echo "$log"; echo "$log" | tail -1 | grep -q 200; echo "$log" | grep -q '"token"'
+          bad=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/v1/auth/login \
+            -H 'Content-Type: application/json' -d '{"email":"ci@demo.cl","password":"malo"}')
+          test "$bad" = "401"
       - name: Logs si falla
         if: failure()
         run: docker compose logs

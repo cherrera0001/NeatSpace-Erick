@@ -10,11 +10,23 @@ y arranca la API conectada a la BD:
 docker compose up --build
 ```
 
-Luego, en el navegador o con curl:
+Luego abre el **panel de pruebas** (doble clic, funciona con la API vía CORS):
+
+```
+public/index.html
+```
+
+Desde ahí puedes: ver `/health`, listar `/categories` (con filtros `level`/`parent`),
+**registrar un usuario** y **hacer login** (muestra el JWT). O directo con curl/navegador:
 
 - **Salud + conectividad BD:** http://localhost:3000/v1/health → `{"status":"ok","db":"up"}`
 - **Categorías (datos reales sembrados):** http://localhost:3000/v1/categories
+- **Registro (real):** `POST /v1/auth/register` `{nombre,email,password}` → crea Usuario+NeatProfile+NeatWallet (atómico) y devuelve JWT.
+- **Login (real):** `POST /v1/auth/login` `{email,password}` → JWT (401 si credenciales inválidas).
 - El resto de endpoints están mapeados; los que aún no tienen lógica responden `501`.
+
+> Re-`up` seguro: el paso de migraciones se salta si el esquema ya existe, así que
+> `docker compose up` es re-ejecutable sin `down -v`.
 
 Parar y limpiar (incluido el volumen de datos):
 

@@ -32,7 +32,14 @@ services:
       - -c
       - |
         set -e
-        for f in /db/migrations/0*.sql; do echo ">> $$f"; psql -h db -U postgres -d neatspace -v ON_ERROR_STOP=1 -f "$$f"; done
+        # Idempotente: las migraciones NO usan IF NOT EXISTS, así que solo se aplican
+        # si el esquema aún no existe (evita romper un re-`up` sobre el volumen persistente).
+        if psql -h db -U postgres -d neatspace -tAc "SELECT to_regclass('public.usuario')" | grep -q usuario; then
+          echo "esquema ya existe → salto migraciones"
+        else
+          for f in /db/migrations/0*.sql; do echo ">> $$f"; psql -h db -U postgres -d neatspace -v ON_ERROR_STOP=1 -f "$$f"; done
+        fi
+        # El seed sí es idempotente (ON CONFLICT); se aplica siempre.
         psql -h db -U postgres -d neatspace -v ON_ERROR_STOP=1 -f /db/seed.sql
         echo "migraciones + seed OK"
 

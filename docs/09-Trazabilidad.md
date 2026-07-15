@@ -53,6 +53,8 @@
 
 Los 35 paths de `openapi.yaml` mapean a CU-01..09, 11..27, 29..32. **Sin endpoint público** (por diseño, internos/jobs/dispatch): CU-10, CU-28, CU-33, CU-34, CU-35. **Ningún endpoint queda sin CU.** ✅
 
+**Endpoint operacional sin CU** (infraestructura, no un caso de uso de negocio): `GET /v1/health` (prueba de vida + conectividad BD; en el contrato con `security: []`).
+
 **Eventos sin CU directo** (emitidos por señales de sistema, no por un endpoint público): `ProfesionalDisponibleCambio` (cambio de disponibilidad del profesional → consumido por NeatMatch) y `AcuerdoExpirado` (job de expiración por TTL, doc 03 §12 / CU-42). Ambos tienen operación `send` en `asyncapi.yaml`; se registran aquí como eventos de sistema, no como huérfanos.
 
 ## 3. Índice inverso: regla → CU (asegura que toda regla se ejerce)

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeatSpace · Panel de pruebas</title>
+  <style>
+    :root { --bg:#0f1115; --card:#171a21; --line:#262b36; --fg:#e7e9ee; --mut:#98a2b3; --acc:#b9723a; --ok:#2ea043; --err:#e5534b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+    header { padding:20px 24px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+    header h1 { font-size:18px; margin:0; }
+    header .lema { color:var(--mut); font-size:13px; font-style:italic; }
+    main { max-width:1100px; margin:0 auto; padding:20px 24px 60px; display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    .full { grid-column:1 / -1; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+    .card h2 { font-size:14px; margin:0 0 12px; letter-spacing:.02em; }
+    label { display:block; font-size:12px; color:var(--mut); margin:8px 0 3px; }
+    input { width:100%; padding:8px 10px; background:#0c0e12; border:1px solid var(--line); border-radius:7px; color:var(--fg); font-size:13px; }
+    button { margin-top:12px; padding:8px 14px; background:var(--acc); color:#fff; border:0; border-radius:7px; font-size:13px; cursor:pointer; }
+    button.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
+    button:active { transform: translateY(1px); }
+    .row { display:flex; gap:10px; }
+    .row > * { flex:1; }
+    pre { background:#0c0e12; border:1px solid var(--line); border-radius:8px; padding:12px; overflow:auto; max-height:340px; font-size:12px; margin:0; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; border:1px solid var(--line); color:var(--mut); }
+    .pill.ok { color:var(--ok); border-color:var(--ok); }
+    .pill.err { color:var(--err); border-color:var(--err); }
+    .tok { font-size:11px; color:var(--mut); word-break:break-all; }
+    a { color:var(--acc); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>NeatSpace · Panel de pruebas</h1>
+    <span class="lema">“Las oportunidades se ganan trabajando.”</span>
+    <span style="flex:1"></span>
+    <label style="margin:0">API base</label>
+    <input id="base" value="http://localhost:3000/v1" style="width:280px" />
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Salud <span id="health-pill" class="pill">—</span></h2>
+      <p style="color:var(--mut);font-size:12px;margin:0">Prueba de vida + conectividad a la base de datos.</p>
+      <button onclick="health()">GET /health</button>
+    </section>
+
+    <section class="card">
+      <h2>Categorías</h2>
+      <div class="row">
+        <div><label>level</label><input id="cat-level" placeholder="(opcional) 1, 2…" /></div>
+        <div><label>parent</label><input id="cat-parent" placeholder="(opcional) uuid" /></div>
+      </div>
+      <button onclick="categories()">GET /categories</button>
+    </section>
+
+    <section class="card">
+      <h2>Registro (CU-01)</h2>
+      <label>nombre</label><input id="r-nombre" value="Ana Pérez" />
+      <label>email</label><input id="r-email" value="ana@demo.cl" />
+      <label>password (min 8)</label><input id="r-pass" value="secreto8" />
+      <button onclick="register()">POST /auth/register</button>
+    </section>
+
+    <section class="card">
+      <h2>Login (CU-02)</h2>
+      <label>email</label><input id="l-email" value="ana@demo.cl" />
+      <label>password</label><input id="l-pass" value="secreto8" />
+      <button onclick="login()">POST /auth/login</button>
+      <div style="margin-top:10px"><span class="pill" id="tok-pill">sin token</span></div>
+      <div class="tok" id="tok"></div>
+    </section>
+
+    <section class="card full">
+      <h2>Respuesta <span id="resp-pill" class="pill">—</span></h2>
+      <pre id="out">Pulsa un botón para ver la respuesta…</pre>
+    </section>
+  </main>
+
+  <script>
+    let token = null;
+    const $ = (id) => document.getElementById(id);
+    const base = () => $('base').value.replace(/\/+$/, '');
+
+    function show(status, body, pillId) {
+      const ok = status >= 200 && status < 300;
+      $('resp-pill').textContent = status;
+      $('resp-pill').className = 'pill ' + (ok ? 'ok' : 'err');
+      if (pillId) { $(pillId).textContent = status; $(pillId).className = 'pill ' + (ok ? 'ok' : 'err'); }
+      $('out').textContent = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+    }
+
+    async function call(method, path, opts = {}) {
+      try {
+        const res = await fetch(base() + path, {
+          method,
+          headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+          body: opts.body ? JSON.stringify(opts.body) : undefined,
+        });
+        let body;
+        try { body = await res.json(); } catch { body = await res.text(); }
+        show(res.status, body, opts.pill);
+        return { status: res.status, body };
+      } catch (e) {
+        show('ERR', 'No se pudo conectar: ' + e.message + '\n¿Está la API en ' + base() + '? (docker compose up)', opts.pill);
+      }
+    }
+
+    const health = () => call('GET', '/health', { pill: 'health-pill' });
+
+    function categories() {
+      const q = new URLSearchParams();
+      if ($('cat-level').value) q.set('level', $('cat-level').value);
+      if ($('cat-parent').value) q.set('parent', $('cat-parent').value);
+      const qs = q.toString();
+      return call('GET', '/categories' + (qs ? '?' + qs : ''));
+    }
+
+    const register = () => call('POST', '/auth/register', {
+      body: { nombre: $('r-nombre').value, email: $('r-email').value, password: $('r-pass').value },
+    });
+
+    async function login() {
+      const r = await call('POST', '/auth/login', {
+        body: { email: $('l-email').value, password: $('l-pass').value },
+      });
+      if (r && r.status === 200 && r.body && r.body.token) {
+        token = r.body.token;
+        $('tok-pill').textContent = 'token OK';
+        $('tok-pill').className = 'pill ok';
+        $('tok').textContent = token;
+      }
+    }
+  </script>
+</body>
+</html>

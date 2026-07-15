@@ -48,6 +48,27 @@ tags:
     description: Endpoints de sistema, no expuestos al cliente.
 
 paths:
+  # ─────────────────────────────── Operacional ─────────────────────────────
+  /health:
+    get:
+      tags: [Interno]
+      summary: Prueba de vida + conectividad a la base de datos
+      operationId: health
+      security: []
+      x-source: server/src/health.controller.ts
+      responses:
+        '200':
+          description: Servicio y BD operativos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  db: { type: string, example: up }
+        '503':
+          description: Degradado (BD no disponible)
+
   # ─────────────────────────────── Identidad ───────────────────────────────
   /auth/register:
     post:
