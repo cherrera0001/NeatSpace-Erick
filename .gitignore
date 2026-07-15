@@ -26,3 +26,6 @@ api-docs.html
 # Logs
 *.log
 npm-debug.log*
+
+# Artefactos de scheduling/loop
+.claude/
