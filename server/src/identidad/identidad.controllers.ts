@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -10,6 +11,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { RegisterDto, LoginDto } from './dto';
 import { DbService } from '../db/db.service';
 import { AuthService } from './auth.service';
@@ -44,9 +46,22 @@ export class CategoriesController {
     @Query('level') level?: string,
     @Query('parent') parent?: string,
   ): Promise<unknown[]> {
-    const lvl =
-      level && Number.isFinite(Number(level)) ? Number(level) : null;
-    const par = parent && parent !== '' ? parent : null;
+    // Validar la entrada ANTES de la query (el cast ::uuid/::int en SQL daría 500).
+    let lvl: number | null = null;
+    if (level !== undefined && level !== '') {
+      const n = Number(level);
+      if (!Number.isInteger(n)) {
+        throw new BadRequestException('level debe ser un entero');
+      }
+      lvl = n;
+    }
+    let par: string | null = null;
+    if (parent !== undefined && parent !== '') {
+      if (!isUUID(parent)) {
+        throw new BadRequestException('parent debe ser un UUID');
+      }
+      par = parent;
+    }
     const { rows } = await this.db.query(
       `SELECT id, nombre, parent_id, nivel, sensible FROM categoria
         WHERE ($1::int IS NULL OR nivel = $1)

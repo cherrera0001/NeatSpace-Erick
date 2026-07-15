@@ -2,6 +2,10 @@
 -- Verifican invariantes que la BD DEBE garantizar (docs/10 TC-I01/TC-I02).
 -- Cada bloque provoca una violación y espera el error; si NO se lanza, falla con RAISE.
 -- Se ejecuta con psql -v ON_ERROR_STOP=1, así que un RAISE 'FALLO...' aborta el job.
+-- Todo corre dentro de una transacción que se DESCARTA al final: no deja datos y
+-- es re-ejecutable (las tablas append-only no admitirían limpieza por DELETE).
+
+BEGIN;
 
 -- Datos mínimos de apoyo
 INSERT INTO usuario (id, email, password_hash)
@@ -127,3 +131,5 @@ EXCEPTION WHEN check_violation THEN
 END $$;
 
 SELECT 'constraints_test: OK' AS resultado;
+
+ROLLBACK;   -- descarta todos los datos del test

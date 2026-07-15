@@ -60,4 +60,11 @@ describe('Validación de contrato (e2e)', () => {
 
   it('interno hold con token de servicio pero sin Idempotency-Key → 400', () =>
     http().post('/v1/services/abc/hold').set('X-Internal-Token', 'svc').expect(400));
+
+  // Validación de query params de /categories (ocurre ANTES de tocar la BD → sin BD)
+  it('categories?parent=no-uuid → 400', () =>
+    http().get('/v1/categories?parent=abc').expect(400));
+
+  it('categories?level=2.5 → 400', () =>
+    http().get('/v1/categories?level=2.5').expect(400));
 });

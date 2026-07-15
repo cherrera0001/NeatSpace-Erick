@@ -51,6 +51,9 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:dev@db:5432/neatspace
       PORT: 3000
+      # Obligatorio: la imagen corre con NODE_ENV=production y el arranque falla
+      # si falta. Valor de demo local; en producción usar un secret real y secreto.
+      JWT_SECRET: demo-local-cambiar-en-produccion
     ports:
       - "3000:3000"
 

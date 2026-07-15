@@ -20,16 +20,27 @@ export class AuthService {
   async register(dto: RegisterDto): Promise<{ token: string; usuario: unknown }> {
     const hash = await bcrypt.hash(dto.password, 10);
     const usuario = await this.db.tx(async (c) => {
+      // Pre-check (camino feliz); la unicidad REAL la garantiza el UNIQUE de la BD.
       const dup = await c.query('SELECT 1 FROM usuario WHERE email = $1', [
         dto.email,
       ]);
       if (dup.rowCount) {
         throw new ConflictException('email ya registrado');
       }
-      const u = await c.query(
-        'INSERT INTO usuario (email, password_hash) VALUES ($1, $2) RETURNING id, email, creado_en',
-        [dto.email, hash],
-      );
+      let u;
+      try {
+        u = await c.query(
+          'INSERT INTO usuario (email, password_hash) VALUES ($1, $2) RETURNING id, email, creado_en',
+          [dto.email, hash],
+        );
+      } catch (e) {
+        // Carrera TOCTOU: dos registros concurrentes pasan el SELECT y el 2º
+        // INSERT choca con el UNIQUE (23505) → traducir a 409, no 500.
+        if (isUniqueViolation(e)) {
+          throw new ConflictException('email ya registrado');
+        }
+        throw e;
+      }
       const usuarioId = u.rows[0].id as string;
       const np = await c.query(
         'INSERT INTO neatprofile (usuario_id, descripcion) VALUES ($1, $2) RETURNING id',
@@ -63,4 +74,14 @@ export class AuthService {
   private sign(sub: string): Promise<string> {
     return this.jwt.signAsync({ sub });
   }
+}
+
+/** True si el error de `pg` es una violación de unicidad (SQLSTATE 23505). */
+function isUniqueViolation(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    'code' in e &&
+    (e as { code?: string }).code === '23505'
+  );
 }
