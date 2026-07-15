@@ -67,4 +67,7 @@ describe('Validación de contrato (e2e)', () => {
 
   it('categories?level=2.5 → 400', () =>
     http().get('/v1/categories?level=2.5').expect(400));
+
+  it('categories?level=9999999999 (fuera de rango int4) → 400, no 500', () =>
+    http().get('/v1/categories?level=9999999999').expect(400));
 });

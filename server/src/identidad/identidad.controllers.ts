@@ -50,8 +50,10 @@ export class CategoriesController {
     let lvl: number | null = null;
     if (level !== undefined && level !== '') {
       const n = Number(level);
-      if (!Number.isInteger(n)) {
-        throw new BadRequestException('level debe ser un entero');
+      // Acotado al dominio real (categoria.nivel es smallint CHECK 1..4). Sin el
+      // tope, un entero enorme desbordaría el cast ::int en la query → 500.
+      if (!Number.isInteger(n) || n < 1 || n > 4) {
+        throw new BadRequestException('level debe ser un entero entre 1 y 4');
       }
       lvl = n;
     }
