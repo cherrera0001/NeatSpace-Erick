@@ -81,8 +81,22 @@ export class AgreementsController {
       if (estado !== 'ABIERTA') {
         throw new ConflictException(`acuerdo en estado ${estado}; no admite retención`);
       }
+      // No se puede mover dinero sobre un acuerdo sin precio (precio_ref era null →
+      // precio 0). Un monto 0 violaría CHECK (monto > 0) en ledger_entry (→ 500).
+      if (Number(precio) <= 0) {
+        throw new ConflictException('acuerdo sin precio válido; no se puede retener escrow');
+      }
+      // Bloqueo de fila sobre la billetera del cliente (FOR UPDATE): serializa dos
+      // accept concurrentes del MISMO cliente. Sin esto, bajo READ COMMITTED (pg/prod,
+      // pool multi-conexión), dos retenciones simultáneas de acuerdos distintos leerían
+      // el mismo saldo, ambas pasarían la guardia y dejarían la billetera negativa /
+      // escrow con dinero no depositado (TOCTOU). El lock hace que la 2ª relea el saldo
+      // ya reducido y falle. La proyección de saldo se calcula bajo este lock.
       const clienteW = (
-        await c.query<{ id: string }>('SELECT id FROM neatwallet WHERE usuario_id = $1', [cliente_id])
+        await c.query<{ id: string }>(
+          'SELECT id FROM neatwallet WHERE usuario_id = $1 FOR UPDATE',
+          [cliente_id],
+        )
       ).rows[0].id;
       // RN-1 · fondos suficientes ANTES de debitar: sin esto el saldo del cliente
       // quedaría negativo y el escrow retendría dinero que nunca se depositó.
@@ -159,7 +173,12 @@ export class AgreementsController {
       const txId = tx.rows[0].id;
       await c.query(LEDGER, [txId, escrow, 'debito', precio, 'Liberación de escrow']);
       await c.query(LEDGER, [txId, profW, 'credito', neto, 'Pago al profesional']);
-      await c.query(LEDGER, [txId, comW, 'credito', com, 'Comisión NeatSpace 20%']);
+      // Para precios ínfimos (1–4 CLP) round(precio×0.20) puede dar 0; un asiento con
+      // monto 0 violaría CHECK (monto > 0). Se omite la pata de comisión nula: el asiento
+      // sigue balanceado (escrow debito precio = profesional credito neto, con neto=precio).
+      if (com > 0) {
+        await c.query(LEDGER, [txId, comW, 'credito', com, 'Comisión NeatSpace 20%']);
+      }
       await c.query("UPDATE acuerdo SET estado='CERRADO' WHERE id=$1", [id]);
       return { estado: 'CERRADO', neto_profesional: neto, comision: com };
     });

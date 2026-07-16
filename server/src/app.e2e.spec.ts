@@ -144,6 +144,39 @@ describe('Validación de contrato (e2e)', () => {
       .expect(409);
   });
 
+  it('accept sobre acuerdo sin precio (precio_ref omitido → 0) → 409, no 500', async () => {
+    // Publicar sin precio_ref: openAgreement fija precio 0; retener 0 violaría CHECK(monto>0).
+    const pub = await http()
+      .post('/v1/opportunities')
+      .send({ tipo: 'urgent', categoria_id: 'a0000000-0000-4000-8000-000000000003' })
+      .expect(201);
+    const ag = await http().post(`/v1/opportunities/${pub.body.id}/agreement`).expect(201);
+    await http()
+      .post(`/v1/agreements/${ag.body.id}/accept`)
+      .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
+      .expect(409);
+  });
+
+  it('confirm con precio ínfimo (comisión redondea a 0) → 201 sin asiento de monto 0', async () => {
+    await http()
+      .post('/v1/wallet/topup')
+      .set('Idempotency-Key', 'e2e-tiny')
+      .send({ monto: 10 })
+      .expect(201);
+    const pub = await http()
+      .post('/v1/opportunities')
+      .send({ tipo: 'urgent', categoria_id: 'a0000000-0000-4000-8000-000000000003', precio_ref: 2 })
+      .expect(201);
+    const ag = await http().post(`/v1/opportunities/${pub.body.id}/agreement`).expect(201);
+    await http()
+      .post(`/v1/agreements/${ag.body.id}/accept`)
+      .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
+      .expect(201);
+    const rel = await http().post(`/v1/agreements/${ag.body.id}/confirm`).expect(201);
+    expect(rel.body.comision).toBe(0); // round(2 × 0.20) = 0 → pata omitida
+    expect(rel.body.neto_profesional).toBe(2);
+  });
+
   it('accept con version_n obsoleta → 409 (concurrencia optimista)', async () => {
     const feed = await http().get('/v1/opportunities').expect(200);
     const opp = (feed.body as Array<{ id: string; estado: string }>).find(
