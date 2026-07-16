@@ -92,9 +92,24 @@ export class OpportunitiesController {
     throw new NotImplementedException('CU-09 · getMatches');
   }
 
-  /** CU-11 · Abrir la Sala de Acuerdo. */
+  /** CU-11 · Abrir la Sala de Acuerdo (crea acuerdo + versión de términos). */
   @Post(':id/agreement')
-  openAgreement(@Param('id') _id: string): never {
-    throw new NotImplementedException('CU-11 · openAgreement');
+  async openAgreement(@Param('id') id: string): Promise<unknown> {
+    return this.db.tx(async (c) => {
+      const opp = await c.query<{ precio_ref: number | null }>(
+        'SELECT precio_ref FROM oportunidad WHERE id = $1',
+        [id],
+      );
+      if (!opp.rows.length) throw new NotFoundException('oportunidad no encontrada');
+      const precio = opp.rows[0].precio_ref ?? 0;
+      const ac = await c.query<{ id: string }>(
+        "INSERT INTO acuerdo (oportunidad_id, estado, version_vigente_n) VALUES ($1,'ABIERTA',1) RETURNING id",
+        [id],
+      );
+      const aid = ac.rows[0].id;
+      await c.query('INSERT INTO acuerdo_version (acuerdo_id, n, precio) VALUES ($1,1,$2)', [aid, precio]);
+      await c.query("UPDATE oportunidad SET estado = 'tomada' WHERE id = $1", [id]);
+      return { id: aid, precio, estado: 'ABIERTA' };
+    });
   }
 }

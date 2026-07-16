@@ -13,8 +13,9 @@ export function resolveJwtSecret(): string {
   return 'dev-only-insecure-secret';
 }
 
-/** Cliente demo sembrado (fallback para poder usar la app sin login en la maqueta). */
+/** Usuarios demo sembrados (fallback para usar la app sin login en la maqueta). */
 export const DEMO_CLIENTE = 'b0000000-0000-4000-8000-000000000001';
+export const DEMO_PROFESIONAL = 'b0000000-0000-4000-8000-000000000002';
 
 /** usuario_id del token Bearer, o null si no hay/no es válido. */
 export function currentUserId(req: Request): string | null {

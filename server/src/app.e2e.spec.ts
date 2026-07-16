@@ -55,11 +55,11 @@ describe('Validación de contrato (e2e)', () => {
   it('accept sin version_n/step_up → 422', () =>
     http().post('/v1/agreements/abc/accept').send({}).expect(422));
 
-  it('accept válido → 501', () =>
+  it('accept sobre acuerdo inexistente → 404', () =>
     http()
-      .post('/v1/agreements/abc/accept')
+      .post('/v1/agreements/00000000-0000-4000-8000-000000000000/accept')
       .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
-      .expect(501));
+      .expect(404));
 
   it('interno hold sin X-Internal-Token → 403 (ServiceAuthGuard corre primero)', () =>
     http().post('/v1/services/abc/hold').set('Idempotency-Key', 'k1').expect(403));
@@ -111,5 +111,25 @@ describe('Validación de contrato (e2e)', () => {
   it('wallet del cliente demo → saldo numérico', async () => {
     const r = await http().get('/v1/wallet').expect(200);
     expect(typeof r.body.saldo).toBe('number');
+  });
+
+  it('flujo de escrow: acuerdo → retención → liberación (comisión 20% exacta)', async () => {
+    await http()
+      .post('/v1/wallet/topup')
+      .set('Idempotency-Key', 'e2e-escrow-topup')
+      .send({ monto: 30000 })
+      .expect(201);
+    const feed = await http().get('/v1/opportunities').expect(200);
+    const opp = (feed.body as Array<{ id: string; precio_ref: number }>).find(
+      (o) => o.precio_ref === 28000,
+    )!;
+    const ag = await http().post(`/v1/opportunities/${opp.id}/agreement`).expect(201);
+    await http()
+      .post(`/v1/agreements/${ag.body.id}/accept`)
+      .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
+      .expect(201);
+    const rel = await http().post(`/v1/agreements/${ag.body.id}/confirm`).expect(201);
+    expect(rel.body.comision).toBe(5600); // 28.000 × 20%
+    expect(rel.body.neto_profesional).toBe(22400);
   });
 });
