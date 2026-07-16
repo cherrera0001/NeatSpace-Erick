@@ -452,4 +452,6 @@
   }
 
   go("inicio");
+  const _s = new URLSearchParams(location.search).get("s");
+  if (_s && screens[_s]) go(_s);
 </script>
