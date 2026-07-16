@@ -72,6 +72,22 @@
       <div class="tok" id="tok"></div>
     </section>
 
+    <section class="card">
+      <h2>Oportunidades (CU-05/06)</h2>
+      <button class="ghost" onclick="feed()">GET /opportunities · feed</button>
+      <label>categoría (uuid)</label><input id="o-cat" value="a0000000-0000-4000-8000-000000000003" />
+      <label>zona</label><input id="o-zona" value="Playa Ancha, Valparaíso" />
+      <label>precio ref (CLP)</label><input id="o-precio" value="18000" />
+      <button onclick="publicar()">POST /opportunities · publicar</button>
+    </section>
+
+    <section class="card">
+      <h2>NeatWallet (CU-21/27)</h2>
+      <button class="ghost" onclick="walletGet()">GET /wallet · saldo + movimientos</button>
+      <label>abonar (CLP)</label><input id="w-monto" value="40000" />
+      <button onclick="topup()">POST /wallet/topup · abono (partida doble)</button>
+    </section>
+
     <section class="card full">
       <h2>Respuesta <span id="resp-pill" class="pill">—</span></h2>
       <pre id="out">Pulsa un botón para ver la respuesta…</pre>
@@ -95,7 +111,11 @@
       try {
         const res = await fetch(base() + path, {
           method,
-          headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: 'Bearer ' + token } : {}),
+            ...(opts.headers || {}),
+          },
           body: opts.body ? JSON.stringify(opts.body) : undefined,
         });
         let body;
@@ -132,6 +152,36 @@
         $('tok').textContent = token;
       }
     }
+
+    // Registro también captura el token (para actuar como el usuario recién creado).
+    const _register = register;
+    window.register = async () => {
+      const r = await _register();
+      if (r && r.body && r.body.token) {
+        token = r.body.token;
+        $('tok-pill').textContent = 'token OK'; $('tok-pill').className = 'pill ok';
+        $('tok').textContent = token;
+      }
+    };
+
+    const feed = () => call('GET', '/opportunities');
+
+    const publicar = () => call('POST', '/opportunities', {
+      body: {
+        tipo: 'urgent',
+        categoria_id: $('o-cat').value,
+        zona: $('o-zona').value,
+        precio_ref: parseInt($('o-precio').value, 10) || 0,
+        descripcion: 'Publicado desde el panel',
+      },
+    });
+
+    const walletGet = () => call('GET', '/wallet');
+
+    const topup = () => call('POST', '/wallet/topup', {
+      headers: { 'Idempotency-Key': 'panel-' + Date.now() + '-' + Math.floor(Math.random() * 1e6) },
+      body: { monto: parseInt($('w-monto').value, 10) || 0 },
+    });
   </script>
 </body>
 </html>

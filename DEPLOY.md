@@ -1,6 +1,25 @@
 # Deploy local — NeatSpace
 
-## Opción A · Stack completo con Docker (recomendado)
+## Opción A · Sin Docker, sin instalar nada (recomendado para verlo YA)
+
+La API arranca con un **PostgreSQL embebido (PGlite)** que aplica las migraciones
+reales y siembra datos. Cero dependencias externas.
+
+```bash
+cd server
+npm install
+npm run build
+npm start            # API en http://localhost:3000/v1 (BD embebida en memoria)
+```
+
+Luego abre **`public/index.html`** en el navegador y úsala de verdad:
+`/health` · categorías · **registro/login** (JWT) · **feed y publicar oportunidades**
+· **NeatWallet** (saldo + abono con partida doble). Todo real, contra la API.
+
+> Los datos viven en memoria y se reinician al parar el server. Para persistencia y
+> PostGIS real, usa la Opción B (Docker).
+
+## Opción B · Stack completo con Docker (Postgres + PostGIS reales)
 
 Requiere **Docker Desktop** (en Windows: instalar y dejar el daemon corriendo).
 Un solo comando levanta PostgreSQL+PostGIS, aplica las migraciones, siembra datos
@@ -38,17 +57,10 @@ docker compose down -v
 > cada push: levanta el stack y verifica `/v1/health` (200) y que `/v1/categories`
 > trae los datos sembrados. Así queda validado aunque no tengas Docker local.
 
-## Opción B · Solo la API (sin BD, para ver la forma)
+## Maqueta visual (sin backend)
 
-No requiere Docker. Los endpoints con BD (`/health`, `/categories`) fallarán, pero
-se ve el ruteo, la validación (422) y los guards (400/403):
-
-```bash
-cd server
-npm install
-npm run build
-npm start           # http://localhost:3000/v1
-```
+Para ver la **forma/UX** del producto sin levantar nada: abre `public/demo.html`
+(datos simulados, todo client-side).
 
 ## Referencia visual del contrato
 
