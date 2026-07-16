@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe, HttpStatus } from '@nestjs/common';
+import { DbExceptionFilter } from './common/db-exception.filter';
 
 /**
  * Configuración compartida entre el bootstrap (main.ts) y los tests e2e,
@@ -19,4 +20,6 @@ export function configureApp(app: INestApplication): void {
       errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
     }),
   );
+  // Traduce errores de entrada de la BD (uuid/enum/rango) a 400 en vez de 500.
+  app.useGlobalFilters(new DbExceptionFilter());
 }

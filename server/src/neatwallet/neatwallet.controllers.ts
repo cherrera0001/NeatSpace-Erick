@@ -55,18 +55,28 @@ export class WalletController {
     @Headers('Idempotency-Key') idem: string,
   ): Promise<unknown> {
     const uid = currentUserId(req) ?? DEMO_CLIENTE;
+    // La Idempotency-Key la controla el cliente; se aísla en su propio namespace
+    // ('topup:') para que NO pueda colisionar con las claves de escrow generadas por
+    // el servidor ('ret-'+id, 'rel-'+id) y bloquear la retención/liberación (DoS).
+    const key = 'topup:' + idem;
     const saldo = await this.db.tx(async (c) => {
       const uw = await c.query<{ id: string }>(
         'SELECT id FROM neatwallet WHERE usuario_id = $1',
         [uid],
       );
       if (!uw.rows.length) throw new NotFoundException('billetera no encontrada');
+      // Idempotencia real: si la clave ya se procesó, no se re-asienta (devuelve el saldo).
+      const dup = await c.query('SELECT 1 FROM transaccion WHERE idempotency_key = $1', [key]);
+      if (dup.rows.length) {
+        const s = await c.query<{ saldo: string }>(SALDO_SQL, [uw.rows[0].id]);
+        return Number(s.rows[0].saldo);
+      }
       const pas = await c.query<{ id: string }>(
         "SELECT id FROM neatwallet WHERE rol_sistema = 'pasarela'",
       );
       const tx = await c.query<{ id: string }>(
         'INSERT INTO transaccion (tipo, idempotency_key) VALUES ($1,$2) RETURNING id',
-        ['topup', idem],
+        ['topup', key],
       );
       const txId = tx.rows[0].id;
       await c.query(

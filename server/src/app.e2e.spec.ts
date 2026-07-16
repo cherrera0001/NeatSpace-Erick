@@ -189,6 +189,37 @@ describe('Validación de contrato (e2e)', () => {
       .expect(409);
   });
 
+  it('GET /opportunities/:id con uuid inválido → 400, no 500', () =>
+    http().get('/v1/opportunities/abc').expect(400));
+
+  it('POST /agreements/:id/confirm con uuid inválido → 400, no 500', () =>
+    http().post('/v1/agreements/not-a-uuid/confirm').expect(400));
+
+  it('topup idempotente: misma Idempotency-Key no acredita dos veces', async () => {
+    const before = (await http().get('/v1/wallet').expect(200)).body.saldo as number;
+    await http().post('/v1/wallet/topup').set('Idempotency-Key', 'e2e-idem-dup').send({ monto: 1000 }).expect(201);
+    await http().post('/v1/wallet/topup').set('Idempotency-Key', 'e2e-idem-dup').send({ monto: 1000 }).expect(201);
+    const after = (await http().get('/v1/wallet').expect(200)).body.saldo as number;
+    expect(after - before).toBe(1000); // un solo abono pese a dos llamadas
+  });
+
+  it('topup con Idempotency-Key tipo "rel-<id>" NO bloquea el escrow (namespace aislado)', async () => {
+    // Reserva una clave que colisionaría con la de liberación si no hubiese namespace.
+    await http().post('/v1/wallet/topup').set('Idempotency-Key', 'rel-colision-test').send({ monto: 500 }).expect(201);
+    // El flujo de escrow completo debe seguir funcionando pese a esa clave "maliciosa".
+    await http().post('/v1/wallet/topup').set('Idempotency-Key', 'e2e-ns-topup').send({ monto: 30000 }).expect(201);
+    const pub = await http()
+      .post('/v1/opportunities')
+      .send({ tipo: 'scheduled', categoria_id: 'a0000000-0000-4000-8000-000000000002', precio_ref: 15000 })
+      .expect(201);
+    const ag = await http().post(`/v1/opportunities/${pub.body.id}/agreement`).expect(201);
+    await http()
+      .post(`/v1/agreements/${ag.body.id}/accept`)
+      .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
+      .expect(201);
+    await http().post(`/v1/agreements/${ag.body.id}/confirm`).expect(201);
+  });
+
   it('publicar con NUL (0x00) en descripcion → 400, no 500', () =>
     http()
       .post('/v1/opportunities')
@@ -205,6 +236,54 @@ describe('Validación de contrato (e2e)', () => {
       .set('Idempotency-Key', 'e2e-overflow')
       .send({ monto: 1e30 })
       .expect(422));
+
+  // ── Reputación / Trust Score (CU-29/30/31) ──
+
+  it('trust-score de perfil sin evaluaciones → 200 cold-start (prior 75)', async () => {
+    const reg = await http()
+      .post('/v1/auth/register')
+      .send({ nombre: 'ColdStart', email: `cold-${Date.now()}@demo.cl`, password: 'secreto8' })
+      .expect(201);
+    const r = await http().get(`/v1/profiles/${reg.body.usuario.id}/trust-score`).expect(200);
+    expect(r.body.valor_0_100).toBe(75);
+    expect(r.body.n_evaluaciones).toBe(0);
+  });
+
+  it('trust-score de perfil inexistente → 404', () =>
+    http().get('/v1/profiles/00000000-0000-4000-8000-000000000000/trust-score').expect(404));
+
+  it('review sobre servicio no CERRADO → 409', async () => {
+    // Publica su propia oportunidad para no consumir las sembradas que otros tests usan.
+    const pub = await http()
+      .post('/v1/opportunities')
+      .send({ tipo: 'urgent', categoria_id: 'a0000000-0000-4000-8000-000000000003', precio_ref: 9000 })
+      .expect(201);
+    const ag = await http().post(`/v1/opportunities/${pub.body.id}/agreement`).expect(201);
+    await http().post(`/v1/services/${ag.body.id}/reviews`).send({ estrellas: 5 }).expect(409);
+  });
+
+  it('flujo reputación: cerrar servicio → evaluar → Trust Score del profesional sube', async () => {
+    await http().post('/v1/wallet/topup').set('Idempotency-Key', 'e2e-rep').send({ monto: 30000 }).expect(201);
+    const pub = await http()
+      .post('/v1/opportunities')
+      .send({ tipo: 'scheduled', categoria_id: 'a0000000-0000-4000-8000-000000000002', precio_ref: 12000 })
+      .expect(201);
+    const ag = await http().post(`/v1/opportunities/${pub.body.id}/agreement`).expect(201);
+    await http()
+      .post(`/v1/agreements/${ag.body.id}/accept`)
+      .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
+      .expect(201);
+    await http().post(`/v1/agreements/${ag.body.id}/confirm`).expect(201);
+    // El cliente demo evalúa al profesional con 5★.
+    const rev = await http()
+      .post(`/v1/services/${ag.body.id}/reviews`)
+      .send({ estrellas: 5, atributos: { amable: true, prolijo: true } })
+      .expect(201);
+    expect(rev.body.rol_evaluado).toBe('profesional');
+    expect(typeof rev.body.trust_score).toBe('number');
+    // Segunda evaluación del mismo servicio por el mismo evaluador → 409 (IN-4).
+    await http().post(`/v1/services/${ag.body.id}/reviews`).send({ estrellas: 4 }).expect(409);
+  });
 
   it('flujo de escrow: acuerdo → retención → liberación (comisión 20% exacta)', async () => {
     await http()
