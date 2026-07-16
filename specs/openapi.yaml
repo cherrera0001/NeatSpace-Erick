@@ -690,6 +690,7 @@ paths:
         se publica al enviar ambas partes o vencer la ventana (doc 05 §2, §11).
       operationId: createReview
       x-source: doc 05 §11
+      x-demo-behavior: 201 RevisionResultado (published false hasta que ambas partes evalúan); 403 si el evaluador no es parte; 409 si servicio no CERRADO o evaluación duplicada
       parameters: [ { $ref: '#/components/parameters/PathId' } ]
       requestBody:
         required: true
@@ -697,9 +698,21 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/ReviewInput' }
       responses:
-        '201': { description: Evaluación registrada (oculta hasta publicación simultánea) }
+        '201':
+          description: |
+            Evaluación registrada. `published=false` mientras siga oculta (double-blind);
+            pasa a `true` y devuelve el `trust_score` recomputado al evaluar ambas partes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RevisionResultado' }
+        '403':
+          description: El evaluador no es parte del servicio (RN-7)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Servicio no pagado
+          description: Servicio no pagado (no CERRADO) o evaluación duplicada (IN-4)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -875,15 +888,20 @@ components:
 
     # ── Oportunidades ──
     OportunidadInput:
+      description: |
+        Publicar oportunidad (CU-05). La categoría se referencia por su UUID
+        (`categoria_id`) y la geo aproximada por `lat`/`lng` opcionales (el feed nunca
+        expone la dirección exacta, RN-6). `tipo` es INMUTABLE (IN-5).
       type: object
-      required: [tipo, categoria, geo]
+      required: [tipo, categoria_id]
       properties:
         tipo: { type: string, enum: [urgent, scheduled] }
-        categoria: { type: string }
-        geo: { $ref: '#/components/schemas/GeoAprox' }
-        precio_ref: { type: integer, description: 'CLP' }
-        fecha: { type: string, format: date-time, nullable: true }
-        descripcion: { type: string }
+        categoria_id: { type: string, format: uuid, description: 'UUID de la categoría (referencia a Categoria.id)' }
+        zona: { type: string, nullable: true, description: 'Zona/comuna aproximada (texto)' }
+        lat: { type: number, nullable: true, description: 'Latitud aproximada (RN-6)' }
+        lng: { type: number, nullable: true, description: 'Longitud aproximada (RN-6)' }
+        precio_ref: { type: integer, minimum: 0, description: 'CLP', nullable: true }
+        descripcion: { type: string, nullable: true }
     Oportunidad:
       type: object
       properties:
@@ -1147,3 +1165,13 @@ components:
         evento: { type: string, enum: [evaluacion, sancion, verificacion, apelacion, decay] }
         resumen: { type: string }
         creado_en: { type: string, format: date-time }
+    RevisionResultado:
+      description: '[embebido] Resultado de createReview. trust_score es null mientras published=false.'
+      type: object
+      required: [id, rol_evaluado, estrellas, published]
+      properties:
+        id: { type: string }
+        rol_evaluado: { type: string, enum: [cliente, profesional] }
+        estrellas: { type: integer, minimum: 1, maximum: 5 }
+        published: { type: boolean, description: 'true cuando ambas partes evaluaron (publicación simultánea)' }
+        trust_score: { type: integer, minimum: 0, maximum: 100, nullable: true }

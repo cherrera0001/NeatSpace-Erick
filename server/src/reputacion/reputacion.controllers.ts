@@ -120,10 +120,15 @@ export class ServicesReviewController {
     const evaluador = currentUserId(req) ?? DEMO_CLIENTE;
     return this.db.tx(async (c) => {
       // El servicio ≡ acuerdo. RN-5: solo se evalúa un servicio pagado (CERRADO).
+      // FOR UPDATE OF ac bloquea la fila del acuerdo: serializa las dos evaluaciones
+      // (cliente y profesional) del MISMO servicio. Sin esto, dos envíos concurrentes
+      // (pg/prod) leerían ambos «la contraparte aún no evaluó» y quedarían las dos
+      // ocultas para siempre (nunca se publican ni consolidan).
       const ac = await c.query<{ estado: string; cliente_id: string }>(
         `SELECT ac.estado, o.cliente_id
            FROM acuerdo ac JOIN oportunidad o ON o.id = ac.oportunidad_id
-          WHERE ac.id = $1`,
+          WHERE ac.id = $1
+          FOR UPDATE OF ac`,
         [id],
       );
       if (!ac.rows.length) throw new NotFoundException('servicio no encontrado');
