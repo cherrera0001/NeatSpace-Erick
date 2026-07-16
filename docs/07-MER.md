@@ -75,7 +75,7 @@ erDiagram
 ### 3.1 Identidad y catálogo
 
 - **usuario** — `id`, `email` (UQ), `estado {activo|suspendido}`, `nivel_verificacion`, `creado_en`. Perfil dual: la faceta cliente/profesional es de comportamiento, no de identidad.
-- **neatprofile** — `id`, `usuario_id` (FK, 1-1), `descripcion`, `habilidades[]`, `cobertura_geo`. Unidad de reputación.
+- **neatprofile** — `id`, `usuario_id` (FK, 1-1), `nombre`, `descripcion`, `habilidades[]`, `cobertura_geo`. Unidad de reputación.
 - **empresa** — `id`, `razon_social`, `giro`. Su billetera se deriva de `neatwallet.empresa_id` (1-1); no hay back-pointer. Miembros vía tabla puente `empresa_miembro` (rol/permisos).
 - **categoria** — `id`, `nombre`, `parent_id` (auto-relación, 4 niveles), `sensible` (bool).
 
@@ -106,7 +106,7 @@ erDiagram
 
 ### 3.5 Reputación
 
-- **evaluacion** — `id`, `servicio_id` (≡ acuerdo), `evaluador_id`, `evaluado_id`, `estrellas 1..5`, `atributos` (jsonb), `comentario` (moderado), `visible` (double-blind). **UQ(servicio_id, evaluador_id)**, inmutable.
+- **evaluacion** — `id`, `servicio_id` (≡ acuerdo), `evaluador_id`, `evaluado_id`, `rol_evaluado {cliente|profesional}?`, `estrellas 1..5`, `atributos` (jsonb), `comentario` (moderado), `visible` (double-blind). **UQ(servicio_id, evaluador_id)**, inmutable.
 - **reputation_log** — `id`, `usuario_id`, `evento {evaluacion|sancion|verificacion|apelacion|decay}`, `payload`, `evaluacion_id?`, `hash_prev`, `hash_actual`. **Append-only encadenado por hash**.
 - **trust_score** — `neatprofile_id` (PK/FK 1-1), `valor_0_100`, `valor_bayesiano`, `atributos_0_100`, `n_evaluaciones`, `nivel_verificacion`, `recalculado_en`. **Proyección** recomputable del log.
 

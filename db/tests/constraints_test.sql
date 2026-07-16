@@ -199,6 +199,15 @@ BEGIN
   INSERT INTO evaluacion (servicio_id, evaluador_id, evaluado_id, estrellas)
     VALUES (aid,'11111111-1111-1111-1111-111111111111',
                 '22222222-2222-2222-2222-222222222222', 5);
+  -- IN-4 / TC-I04: una evaluación por (servicio, evaluador)
+  BEGIN
+    INSERT INTO evaluacion (servicio_id, evaluador_id, evaluado_id, estrellas)
+      VALUES (aid,'11111111-1111-1111-1111-111111111111',
+                  '22222222-2222-2222-2222-222222222222', 3);
+    RAISE EXCEPTION 'FALLO TC-I04: se aceptó una 2ª evaluación del mismo evaluador';
+  EXCEPTION WHEN unique_violation THEN
+    RAISE NOTICE 'OK TC-I04: UNIQUE(servicio,evaluador) rechaza duplicado';
+  END;
   BEGIN
     UPDATE evaluacion SET estrellas = 1 WHERE servicio_id = aid;
     RAISE EXCEPTION 'FALLO: se permitió mutar estrellas (señal de reputación)';
