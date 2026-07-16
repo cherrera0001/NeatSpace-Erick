@@ -2,8 +2,14 @@ import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import * as jwt from 'jsonwebtoken';
 import { AppModule } from './app.module';
 import { configureApp } from './app.config';
+
+// Token de la contraparte profesional demo (para probar el double-blind bidireccional).
+const DEMO_PROFESIONAL = 'b0000000-0000-4000-8000-000000000002';
+const proBearer = () =>
+  `Bearer ${jwt.sign({ sub: DEMO_PROFESIONAL }, process.env.JWT_SECRET ?? 'dev-only-insecure-secret')}`;
 
 // e2e sin BD: la validación corre en el ValidationPipe / guards ANTES de tocar la
 // BD. Verifica el contrato de entrada: cuerpo inválido → 422; guard de idempotencia
@@ -262,11 +268,12 @@ describe('Validación de contrato (e2e)', () => {
     await http().post(`/v1/services/${ag.body.id}/reviews`).send({ estrellas: 5 }).expect(409);
   });
 
-  it('flujo reputación: cerrar servicio → evaluar → Trust Score del profesional sube', async () => {
-    await http().post('/v1/wallet/topup').set('Idempotency-Key', 'e2e-rep').send({ monto: 30000 }).expect(201);
+  // Cierra un servicio (acuerdo CERRADO) del cliente demo y devuelve su id.
+  const cerrarServicio = async (precio: number, key: string) => {
+    await http().post('/v1/wallet/topup').set('Idempotency-Key', key).send({ monto: precio + 5000 }).expect(201);
     const pub = await http()
       .post('/v1/opportunities')
-      .send({ tipo: 'scheduled', categoria_id: 'a0000000-0000-4000-8000-000000000002', precio_ref: 12000 })
+      .send({ tipo: 'scheduled', categoria_id: 'a0000000-0000-4000-8000-000000000002', precio_ref: precio })
       .expect(201);
     const ag = await http().post(`/v1/opportunities/${pub.body.id}/agreement`).expect(201);
     await http()
@@ -274,16 +281,55 @@ describe('Validación de contrato (e2e)', () => {
       .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
       .expect(201);
     await http().post(`/v1/agreements/${ag.body.id}/confirm`).expect(201);
-    // El cliente demo evalúa al profesional con 5★.
+    return ag.body.id as string;
+  };
+
+  it('double-blind: 1ª evaluación queda oculta (published:false, sin cambiar Trust Score)', async () => {
+    const svc = await cerrarServicio(12000, 'e2e-rep-hidden');
     const rev = await http()
-      .post(`/v1/services/${ag.body.id}/reviews`)
-      .send({ estrellas: 5, atributos: { amable: true, prolijo: true } })
+      .post(`/v1/services/${svc}/reviews`)
+      .send({ estrellas: 5, atributos: { amable: true } })
       .expect(201);
-    expect(rev.body.rol_evaluado).toBe('profesional');
-    expect(typeof rev.body.trust_score).toBe('number');
-    // Segunda evaluación del mismo servicio por el mismo evaluador → 409 (IN-4).
-    await http().post(`/v1/services/${ag.body.id}/reviews`).send({ estrellas: 4 }).expect(409);
+    expect(rev.body.published).toBe(false);
+    expect(rev.body.trust_score).toBeNull(); // no se filtra puntaje antes de publicar
   });
+
+  it('double-blind: al evaluar ambas partes se publica y el Trust Score se recomputa', async () => {
+    const svc = await cerrarServicio(12000, 'e2e-rep-both');
+    // Cliente demo evalúa al profesional (oculto).
+    const r1 = await http().post(`/v1/services/${svc}/reviews`).send({ estrellas: 5 }).expect(201);
+    expect(r1.body.published).toBe(false);
+    // El profesional evalúa al cliente → publicación simultánea.
+    const r2 = await http()
+      .post(`/v1/services/${svc}/reviews`)
+      .set('Authorization', proBearer())
+      .send({ estrellas: 4 })
+      .expect(201);
+    expect(r2.body.published).toBe(true);
+    expect(r2.body.rol_evaluado).toBe('cliente');
+    expect(typeof r2.body.trust_score).toBe('number');
+    // Reevaluar (misma parte, mismo servicio) → 409 (IN-4).
+    await http().post(`/v1/services/${svc}/reviews`).send({ estrellas: 3 }).expect(409);
+  });
+
+  it('review por un tercero ajeno al servicio → 403 (RN-7, no manipula reputación)', async () => {
+    const svc = await cerrarServicio(9000, 'e2e-rep-3rd');
+    const reg = await http()
+      .post('/v1/auth/register')
+      .send({ nombre: 'Ajeno', email: `ajeno-${Date.now()}@demo.cl`, password: 'secreto8' })
+      .expect(201);
+    await http()
+      .post(`/v1/services/${svc}/reviews`)
+      .set('Authorization', `Bearer ${reg.body.token as string}`)
+      .send({ estrellas: 1 })
+      .expect(403);
+  });
+
+  it('publicar con categoria_id uuid válido pero inexistente → 422 (FK), no 500', () =>
+    http()
+      .post('/v1/opportunities')
+      .send({ tipo: 'urgent', categoria_id: '00000000-0000-4000-8000-0000000000ff', precio_ref: 5000 })
+      .expect(422));
 
   it('flujo de escrow: acuerdo → retención → liberación (comisión 20% exacta)', async () => {
     await http()

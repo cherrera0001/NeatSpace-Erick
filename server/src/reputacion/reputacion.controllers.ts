@@ -2,6 +2,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -24,7 +25,11 @@ import { hashEvent } from '../domain/reputation-hash';
 const PRIOR_MEAN = 0.75; // 75/100 de arranque
 const PRIOR_STRENGTH = 5; // «peso» de N evaluaciones ficticias en el prior
 
-/** Recomputa la proyección trust_score de un neatprofile desde sus evaluaciones (IN-7). */
+/**
+ * Recomputa la proyección trust_score de un neatprofile desde sus evaluaciones (IN-7).
+ * SOLO agrega evaluaciones PUBLICADAS (visible=true): el double-blind exige que nada
+ * público cambie hasta la publicación simultánea (doc 05 §2).
+ */
 async function recomputeTrustScore(c: DbClient, neatprofileId: string): Promise<{
   valor_0_100: number;
   atributos_0_100: Record<string, number>;
@@ -38,7 +43,7 @@ async function recomputeTrustScore(c: DbClient, neatprofileId: string): Promise<
   if (!prof.rows.length) return null;
   const usuarioId = prof.rows[0].usuario_id;
   const evs = await c.query<{ estrellas: number; atributos: Record<string, boolean> }>(
-    'SELECT estrellas, atributos FROM evaluacion WHERE evaluado_id = $1',
+    'SELECT estrellas, atributos FROM evaluacion WHERE evaluado_id = $1 AND visible = true',
     [usuarioId],
   );
   const ratings = evs.rows.map((e) => ({ s: starToUnit(Number(e.estrellas)), w: 1 }));
@@ -66,6 +71,40 @@ async function recomputeTrustScore(c: DbClient, neatprofileId: string): Promise<
   return { valor_0_100: valor, atributos_0_100, n_evaluaciones: n, nivel_verificacion: 0 };
 }
 
+/**
+ * Consolida la reputación de UNA evaluación publicada: bloquea el perfil del evaluado
+ * (serializa la cadena de hash, IN-8), añade el evento encadenado al reputation_log y
+ * recomputa su Trust Score. Devuelve el valor 0-100 resultante (o null si sin perfil).
+ */
+async function consolidarReputacion(
+  c: DbClient,
+  evaluacionId: string,
+  evaluadoId: string,
+  estrellas: number,
+): Promise<number | null> {
+  // Lock del perfil del evaluado: evita que dos publicaciones concurrentes lean el
+  // mismo hash predecesor y bifurquen la cadena append-only (IN-8).
+  const prof = await c.query<{ id: string }>(
+    'SELECT id FROM neatprofile WHERE usuario_id = $1 FOR UPDATE',
+    [evaluadoId],
+  );
+  const payload = JSON.stringify({ evaluacion_id: evaluacionId, evaluado: evaluadoId, estrellas });
+  const prev = await c.query<{ h: string | null }>(
+    "SELECT encode(hash_actual,'hex') AS h FROM reputation_log WHERE usuario_id = $1 ORDER BY creado_en DESC LIMIT 1",
+    [evaluadoId],
+  );
+  const prevHex = prev.rows.length ? prev.rows[0].h : null;
+  const hashActual = hashEvent(prevHex, payload);
+  await c.query(
+    `INSERT INTO reputation_log (usuario_id, evento, payload, evaluacion_id, hash_prev, hash_actual)
+     VALUES ($1,'evaluacion',$2::jsonb,$3, decode($4,'hex'), decode($5,'hex'))`,
+    [evaluadoId, payload, evaluacionId, prevHex, hashActual],
+  );
+  if (!prof.rows.length) return null;
+  const ts = await recomputeTrustScore(c, prof.rows[0].id);
+  return ts?.valor_0_100 ?? null;
+}
+
 @Controller('services')
 export class ServicesReviewController {
   constructor(private readonly db: DbService) {}
@@ -91,15 +130,20 @@ export class ServicesReviewController {
       if (ac.rows[0].estado !== 'CERRADO') {
         throw new ConflictException('el servicio no está pagado (CERRADO); no admite evaluación');
       }
-      // Faceta evaluada: el cliente evalúa al profesional y viceversa (demo: contraparte fija).
-      const evaluadoEsProfesional = evaluador === ac.rows[0].cliente_id;
-      const evaluado = evaluadoEsProfesional ? DEMO_PROFESIONAL : ac.rows[0].cliente_id;
-      const rol = evaluadoEsProfesional ? 'profesional' : 'cliente';
-      if (evaluado === evaluador) {
-        throw new ConflictException('no puedes evaluarte a ti mismo');
+      const cliente = ac.rows[0].cliente_id;
+      // RN-7 · Autorización: solo las PARTES del acuerdo pueden evaluar. Sin este guard,
+      // cualquier usuario autenticado manipularía la reputación pública de un tercero.
+      const esCliente = evaluador === cliente;
+      const esProfesional = evaluador === DEMO_PROFESIONAL;
+      if (!esCliente && !esProfesional) {
+        throw new ForbiddenException('solo las partes del servicio pueden evaluarlo');
       }
+      // La contraparte de quien evalúa (demo: cliente ↔ profesional fijo).
+      const evaluado = esCliente ? DEMO_PROFESIONAL : cliente;
+      const rol = esCliente ? 'profesional' : 'cliente';
 
-      // Insert de la evaluación. UNIQUE(servicio_id, evaluador_id) → 409 (IN-4).
+      // Inserta la evaluación OCULTA (visible=false por defecto, double-blind).
+      // UNIQUE(servicio_id, evaluador_id) → 409 (IN-4).
       let evId: string;
       try {
         const ins = await c.query<{ id: string }>(
@@ -116,27 +160,45 @@ export class ServicesReviewController {
         throw e;
       }
 
-      // Append encadenado por hash al reputation_log del evaluado (IN-8).
-      const payload = JSON.stringify({ servicio_id: id, evaluado, estrellas: b.estrellas });
-      const prev = await c.query<{ h: string | null }>(
-        "SELECT encode(hash_actual,'hex') AS h FROM reputation_log WHERE usuario_id = $1 ORDER BY creado_en DESC LIMIT 1",
-        [evaluado],
+      // Publicación simultánea (double-blind, doc 05 §2): nada público cambia hasta que
+      // AMBAS partes evalúan. Si la contraparte aún no evaluó, la reseña queda oculta:
+      // sin log y sin recomputar Trust Score (no se filtra que existe ni su polaridad).
+      const contra = await c.query<{ id: string }>(
+        'SELECT id FROM evaluacion WHERE servicio_id = $1 AND evaluador_id = $2',
+        [id, evaluado],
       );
-      const prevHex = prev.rows.length ? prev.rows[0].h : null;
-      const hashActual = hashEvent(prevHex, payload);
-      await c.query(
-        `INSERT INTO reputation_log (usuario_id, evento, payload, evaluacion_id, hash_prev, hash_actual)
-         VALUES ($1,'evaluacion',$2::jsonb,$3, decode($4,'hex'), decode($5,'hex'))`,
-        [evaluado, payload, evId, prevHex, hashActual],
-      );
+      if (!contra.rows.length) {
+        return { id: evId, rol_evaluado: rol, estrellas: b.estrellas, published: false, trust_score: null };
+      }
 
-      // Recomputa la proyección de Trust Score del evaluado.
-      const prof = await c.query<{ id: string }>(
-        'SELECT id FROM neatprofile WHERE usuario_id = $1',
-        [evaluado],
+      // Ambas partes evaluaron → publicar las dos y consolidar la reputación de cada una.
+      await c.query('UPDATE evaluacion SET visible = true WHERE servicio_id = $1 AND visible = false', [id]);
+      const ambas = await c.query<{ id: string; evaluado_id: string; estrellas: number }>(
+        'SELECT id, evaluado_id, estrellas FROM evaluacion WHERE servicio_id = $1 AND visible = true',
+        [id],
       );
-      const ts = prof.rows.length ? await recomputeTrustScore(c, prof.rows[0].id) : null;
-      return { id: evId, rol_evaluado: rol, estrellas: b.estrellas, trust_score: ts?.valor_0_100 ?? null };
+      const scores: Record<string, number | null> = {};
+      for (const rev of ambas.rows) {
+        // Evita doble-consolidación: solo la que aún no tiene evento en el log.
+        const yaLog = await c.query(
+          'SELECT 1 FROM reputation_log WHERE evaluacion_id = $1',
+          [rev.id],
+        );
+        if (yaLog.rows.length) continue;
+        scores[rev.evaluado_id] = await consolidarReputacion(
+          c,
+          rev.id,
+          rev.evaluado_id,
+          Number(rev.estrellas),
+        );
+      }
+      return {
+        id: evId,
+        rol_evaluado: rol,
+        estrellas: b.estrellas,
+        published: true,
+        trust_score: scores[evaluado] ?? null,
+      };
     });
   }
 }
@@ -160,7 +222,7 @@ export class ProfilesReputationController {
       [id],
     );
     if (!ts.rows.length) {
-      // Cold-start: perfil sin evaluaciones aún → proyección con el prior.
+      // Cold-start: perfil sin evaluaciones publicadas aún → proyección con el prior.
       return {
         valor_0_100: Math.round(100 * PRIOR_MEAN),
         atributos_0_100: {},
@@ -179,7 +241,7 @@ export class ProfilesReputationController {
     };
   }
 
-  /** CU-30 · Historial público (derivado del log). */
+  /** CU-30 · Historial público (derivado del log; solo eventos ya publicados). */
   @Get(':id/reputation')
   async getReputation(@Param('id') id: string): Promise<unknown[]> {
     const prof = await this.db.query<{ usuario_id: string }>(
