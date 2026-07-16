@@ -3,31 +3,84 @@ import {
   Controller,
   Get,
   Headers,
+  NotFoundException,
   NotImplementedException,
   Param,
   Post,
-  Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { IdempotencyKeyGuard } from '../common/idempotency-key.guard';
 import { ServiceAuthGuard } from '../common/service-auth.guard';
 import { TopupDto, WithdrawDto, RefundDto } from './dto';
+import { DbService } from '../db/db.service';
+import { currentUserId, DEMO_CLIENTE } from '../common/jwt';
+
+const SALDO_SQL =
+  "SELECT coalesce(sum(CASE direccion WHEN 'credito' THEN monto ELSE -monto END),0)::bigint AS saldo FROM ledger_entry WHERE wallet_id = $1";
 
 // Contexto NeatWallet + webhooks (doc 07 §1). Dinero: RN-1..4, IN-2.
 
 @Controller('wallet')
 export class WalletController {
-  /** CU-27 · Saldo (proyección) + movimientos. RN-7 anti-IDOR. */
+  constructor(private readonly db: DbService) {}
+
+  /** CU-27 · Saldo (proyección desde el ledger) + movimientos. */
   @Get()
-  getWallet(@Query() _q: unknown): never {
-    throw new NotImplementedException('CU-27 · getWallet');
+  async getWallet(@Req() req: Request): Promise<unknown> {
+    const uid = currentUserId(req) ?? DEMO_CLIENTE;
+    const w = await this.db.query<{ id: string }>(
+      'SELECT id FROM neatwallet WHERE usuario_id = $1',
+      [uid],
+    );
+    if (!w.rows.length) return { saldo: 0, moneda: 'CLP', movimientos: [] };
+    const walletId = w.rows[0].id;
+    const s = await this.db.query<{ saldo: string }>(SALDO_SQL, [walletId]);
+    const mov = await this.db.query(
+      `SELECT le.direccion, le.monto, le.concepto, le.creado_en, t.tipo
+         FROM ledger_entry le JOIN transaccion t ON t.id = le.transaccion_id
+        WHERE le.wallet_id = $1 ORDER BY le.creado_en DESC LIMIT 20`,
+      [walletId],
+    );
+    return { saldo: Number(s.rows[0].saldo), moneda: 'CLP', movimientos: mov.rows };
   }
 
-  /** CU-21 · Abonar vía MercadoPago. RN-1 (Idempotency-Key); RN-3 (no asienta). */
+  /** CU-21 · Abonar (topup). Asiento de partida doble PASARELA → billetera del usuario. */
   @Post('topup')
   @UseGuards(IdempotencyKeyGuard)
-  topup(@Body() _b: TopupDto): never {
-    throw new NotImplementedException('CU-21 · topup');
+  async topup(
+    @Body() dto: TopupDto,
+    @Req() req: Request,
+    @Headers('Idempotency-Key') idem: string,
+  ): Promise<unknown> {
+    const uid = currentUserId(req) ?? DEMO_CLIENTE;
+    const saldo = await this.db.tx(async (c) => {
+      const uw = await c.query<{ id: string }>(
+        'SELECT id FROM neatwallet WHERE usuario_id = $1',
+        [uid],
+      );
+      if (!uw.rows.length) throw new NotFoundException('billetera no encontrada');
+      const pas = await c.query<{ id: string }>(
+        "SELECT id FROM neatwallet WHERE rol_sistema = 'pasarela'",
+      );
+      const tx = await c.query<{ id: string }>(
+        'INSERT INTO transaccion (tipo, idempotency_key) VALUES ($1,$2) RETURNING id',
+        ['topup', idem],
+      );
+      const txId = tx.rows[0].id;
+      await c.query(
+        'INSERT INTO ledger_entry (transaccion_id, wallet_id, direccion, monto, concepto) VALUES ($1,$2,$3,$4,$5)',
+        [txId, pas.rows[0].id, 'debito', dto.monto, 'Abono MercadoPago'],
+      );
+      await c.query(
+        'INSERT INTO ledger_entry (transaccion_id, wallet_id, direccion, monto, concepto) VALUES ($1,$2,$3,$4,$5)',
+        [txId, uw.rows[0].id, 'credito', dto.monto, 'Abono'],
+      );
+      const s = await c.query<{ saldo: string }>(SALDO_SQL, [uw.rows[0].id]);
+      return Number(s.rows[0].saldo);
+    });
+    return { ok: true, monto: dto.monto, saldo };
   }
 
   /** CU-25 · Retiro a banco (2FA + KYC). RN-1. */

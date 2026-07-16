@@ -64,7 +64,14 @@ export class DbService implements OnModuleInit, OnModuleDestroy {
     if (existsSync(seed)) {
       await this.lite!.exec(toPglite(readFileSync(seed, 'utf8')));
     }
-    this.logger.log(`Esquema embebido aplicado (${files.length} migraciones + seed)`);
+    // Demo local: oportunidades de ejemplo (geo como jsonb; solo motor embebido).
+    await this.lite!.exec(`
+      INSERT INTO oportunidad (cliente_id, tipo, categoria_id, zona, geo_aprox, precio_ref, descripcion) VALUES
+       ('b0000000-0000-4000-8000-000000000001','urgent','a0000000-0000-4000-8000-000000000003','Cerro Alegre, Valparaíso','{"lat":-33.04,"lng":-71.63}'::jsonb,15000,'Fuga bajo el lavaplatos'),
+       ('b0000000-0000-4000-8000-000000000001','scheduled','a0000000-0000-4000-8000-000000000002','Recreo, Viña del Mar','{"lat":-33.02,"lng":-71.55}'::jsonb,28000,'Aseo profundo post-mudanza'),
+       ('b0000000-0000-4000-8000-000000000001','scheduled','a0000000-0000-4000-8000-000000000004','Reñaca Alto','{"lat":-32.97,"lng":-71.54}'::jsonb,22000,'Poda y mantención mensual');
+    `);
+    this.logger.log(`Esquema embebido aplicado (${files.length} migraciones + seed + demo)`);
   }
 
   private findDbDir(): string | null {

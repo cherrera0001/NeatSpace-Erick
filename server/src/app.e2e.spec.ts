@@ -1,4 +1,4 @@
-import { describe, it, beforeAll, afterAll } from 'vitest';
+import { describe, it, beforeAll, afterAll, expect } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -43,8 +43,8 @@ describe('Validación de contrato (e2e)', () => {
   it('topup con key + monto inválido (0) → 422', () =>
     http().post('/v1/wallet/topup').set('Idempotency-Key', 'k1').send({ monto: 0 }).expect(422));
 
-  it('topup con key + válido → 501 (stub)', () =>
-    http().post('/v1/wallet/topup').set('Idempotency-Key', 'k1').send({ monto: 1000 }).expect(501));
+  it('topup con key + válido → 201 (asiento de partida doble real)', () =>
+    http().post('/v1/wallet/topup').set('Idempotency-Key', 'e2e-topup-1').send({ monto: 1000 }).expect(201));
 
   it('review con estrellas fuera de rango → 422', () =>
     http().post('/v1/services/abc/reviews').send({ estrellas: 9 }).expect(422));
@@ -76,4 +76,40 @@ describe('Validación de contrato (e2e)', () => {
 
   it('categories?level=9999999999 (fuera de rango int4) → 400, no 500', () =>
     http().get('/v1/categories?level=9999999999').expect(400));
+
+  // ── Flujos reales contra la BD embebida (PGlite) ──
+  it('registro real → 201 con token y NeatProfile', async () => {
+    const r = await http()
+      .post('/v1/auth/register')
+      .send({ nombre: 'E2E', email: `e2e-${Date.now()}@demo.cl`, password: 'secreto8' })
+      .expect(201);
+    expect(typeof r.body.token).toBe('string');
+    expect(r.body.usuario.nombre).toBe('E2E');
+    expect(r.body.usuario.usuario_id).toBeTruthy();
+  });
+
+  it('login credenciales inválidas → 401', () =>
+    http().post('/v1/auth/login').send({ email: 'nadie@demo.cl', password: 'malo' }).expect(401));
+
+  it('feed de oportunidades → 200 con datos sembrados', async () => {
+    const r = await http().get('/v1/opportunities').expect(200);
+    expect(Array.isArray(r.body)).toBe(true);
+    expect(r.body.length).toBeGreaterThan(0);
+  });
+
+  it('publicar oportunidad → 201', () =>
+    http()
+      .post('/v1/opportunities')
+      .send({
+        tipo: 'urgent',
+        categoria_id: 'a0000000-0000-4000-8000-000000000003',
+        zona: 'Test',
+        precio_ref: 9000,
+      })
+      .expect(201));
+
+  it('wallet del cliente demo → saldo numérico', async () => {
+    const r = await http().get('/v1/wallet').expect(200);
+    expect(typeof r.body.saldo).toBe('number');
+  });
 });

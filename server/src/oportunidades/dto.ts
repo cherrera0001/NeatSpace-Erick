@@ -1,24 +1,25 @@
 import {
-  IsDateString,
   IsIn,
   IsInt,
-  IsObject,
+  IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
 } from 'class-validator';
 
-// OportunidadInput del OpenAPI. `tipo` es INMUTABLE (IN-5) y la geo del feed es
-// aproximada (RN-6).
+// Publicar oportunidad (CU-05). `tipo` es INMUTABLE (IN-5); la geo del feed es
+// aproximada (RN-6). Para la demo aceptamos categoria_id + zona (+ lat/lng opcionales).
 export class OportunidadInputDto {
   @IsIn(['urgent', 'scheduled'])
   tipo!: string;
 
-  @IsString()
-  categoria!: string;
+  @IsUUID()
+  categoria_id!: string;
 
-  @IsObject()
-  geo!: Record<string, unknown>;
+  @IsOptional()
+  @IsString()
+  zona?: string;
 
   @IsOptional()
   @IsInt()
@@ -26,10 +27,14 @@ export class OportunidadInputDto {
   precio_ref?: number;
 
   @IsOptional()
-  @IsDateString()
-  fecha?: string;
-
-  @IsOptional()
   @IsString()
   descripcion?: string;
+
+  @IsOptional()
+  @IsNumber()
+  lat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  lng?: number;
 }
