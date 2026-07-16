@@ -4,9 +4,15 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolClient, types as pgTypes } from 'pg';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+// node-postgres devuelve int8 (bigint) como STRING para no perder precisión; PGlite
+// lo devuelve como number. Todos nuestros bigint son montos CLP acotados (≤ 1e8),
+// muy por debajo de Number.MAX_SAFE_INTEGER, así que los parseamos a number para que
+// la respuesta JSON cumpla el contrato OpenAPI `integer` igual en prod (pg) y dev.
+pgTypes.setTypeParser(20, (v) => (v === null ? null : Number(v))); // OID 20 = int8
 
 /** Cliente mínimo común a `pg` y a PGlite (ambos exponen query→{rows}). */
 export interface DbClient {

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ConflictException,
   Get,
   NotFoundException,
   NotImplementedException,
@@ -21,6 +22,10 @@ import { DEMO_PROFESIONAL } from '../common/jwt';
 
 const LEDGER =
   'INSERT INTO ledger_entry (transaccion_id, wallet_id, direccion, monto, concepto) VALUES ($1,$2,$3,$4,$5)';
+
+// Saldo proyectado desde el ledger (créditos − débitos) para una billetera.
+const SALDO_SQL =
+  "SELECT coalesce(sum(CASE direccion WHEN 'credito' THEN monto ELSE -monto END),0)::bigint AS saldo FROM ledger_entry WHERE wallet_id = $1";
 
 // Contexto Sala de Acuerdo + ejecución del servicio (doc 07 §1).
 
@@ -53,10 +58,10 @@ export class AgreementsController {
 
   /** CU-14 · Aceptar → retención de escrow (débito cliente, crédito ESCROW). */
   @Post(':id/accept')
-  async accept(@Param('id') id: string, @Body() _b: AcceptDto): Promise<unknown> {
+  async accept(@Param('id') id: string, @Body() b: AcceptDto): Promise<unknown> {
     return this.db.tx(async (c) => {
-      const a = await c.query<{ cliente_id: string; precio: number }>(
-        `SELECT o.cliente_id, av.precio
+      const a = await c.query<{ cliente_id: string; precio: number; estado: string; version_vigente_n: number }>(
+        `SELECT o.cliente_id, av.precio, ac.estado, ac.version_vigente_n
            FROM acuerdo ac
            JOIN oportunidad o ON o.id = ac.oportunidad_id
            JOIN acuerdo_version av ON av.acuerdo_id = ac.id AND av.n = ac.version_vigente_n
@@ -64,10 +69,29 @@ export class AgreementsController {
         [id],
       );
       if (!a.rows.length) throw new NotFoundException('acuerdo no encontrado');
-      const { cliente_id, precio } = a.rows[0];
+      const { cliente_id, precio, estado, version_vigente_n } = a.rows[0];
+      // Concurrencia optimista (contrato AcceptInput.version_n): el cliente acepta
+      // una versión concreta; si ya no es la vigente, 409 (no retener a ciegas).
+      if (Number(b.version_n) !== Number(version_vigente_n)) {
+        throw new ConflictException(
+          `version_n ${b.version_n} obsoleta; vigente es ${version_vigente_n}`,
+        );
+      }
+      // Guardia de estado: solo se retiene sobre un acuerdo ABIERTO (no re-aceptar).
+      if (estado !== 'ABIERTA') {
+        throw new ConflictException(`acuerdo en estado ${estado}; no admite retención`);
+      }
       const clienteW = (
         await c.query<{ id: string }>('SELECT id FROM neatwallet WHERE usuario_id = $1', [cliente_id])
       ).rows[0].id;
+      // RN-1 · fondos suficientes ANTES de debitar: sin esto el saldo del cliente
+      // quedaría negativo y el escrow retendría dinero que nunca se depositó.
+      const saldoCliente = Number(
+        (await c.query<{ saldo: string }>(SALDO_SQL, [clienteW])).rows[0].saldo,
+      );
+      if (saldoCliente < Number(precio)) {
+        throw new ConflictException('fondos insuficientes para retener en escrow (PAGO_FALLIDO)');
+      }
       const escrow = (
         await c.query<{ id: string }>("SELECT id FROM neatwallet WHERE rol_sistema = 'escrow'")
       ).rows[0].id;
@@ -102,13 +126,22 @@ export class AgreementsController {
   @Post(':id/confirm')
   async confirm(@Param('id') id: string): Promise<unknown> {
     return this.db.tx(async (c) => {
-      const a = await c.query<{ precio: number }>(
-        `SELECT av.precio FROM acuerdo ac
+      const a = await c.query<{ precio: number; estado: string }>(
+        `SELECT av.precio, ac.estado FROM acuerdo ac
            JOIN acuerdo_version av ON av.acuerdo_id = ac.id AND av.n = ac.version_vigente_n
           WHERE ac.id = $1`,
         [id],
       );
       if (!a.rows.length) throw new NotFoundException('acuerdo no encontrado');
+      // Guardia de estado: solo se libera lo que fue RETENIDO (estado ACORDADO).
+      // Sin esto se podría liberar escrow nunca retenido → escrow negativo + dinero
+      // acuñado al profesional. La idempotency_key 'rel-'+id solo evita doble
+      // liberación del MISMO acuerdo, no una liberación sin retención previa.
+      if (a.rows[0].estado !== 'ACORDADO') {
+        throw new ConflictException(
+          `acuerdo en estado ${a.rows[0].estado}; no hay retención que liberar`,
+        );
+      }
       const precio = Number(a.rows[0].precio);
       const com = commission(precio); // round(precio × 0.20), server-side
       const neto = precio - com; // complemento exacto (IN-2)

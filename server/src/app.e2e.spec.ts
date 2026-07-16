@@ -113,6 +113,66 @@ describe('Validación de contrato (e2e)', () => {
     expect(typeof r.body.saldo).toBe('number');
   });
 
+  // ── Guardias contables/entrada (hallazgos r7, verificados adversarialmente) ──
+
+  it('confirm sin retención previa (acuerdo ABIERTA) → 409, no acuña dinero', async () => {
+    const feed = await http().get('/v1/opportunities').expect(200);
+    const opp = (feed.body as Array<{ id: string; estado: string }>).find(
+      (o) => o.estado === 'publicado',
+    )!;
+    const ag = await http().post(`/v1/opportunities/${opp.id}/agreement`).expect(201);
+    // Sin accept() (sin retención): confirm debe rechazarse, no liberar escrow.
+    await http().post(`/v1/agreements/${ag.body.id}/confirm`).expect(409);
+  });
+
+  it('accept sin fondos suficientes → 409 (no deja saldo negativo)', async () => {
+    // Usuario recién registrado: su NeatWallet arranca en 0. Publica y abre acuerdo.
+    const reg = await http()
+      .post('/v1/auth/register')
+      .send({ nombre: 'SinFondos', email: `nofunds-${Date.now()}@demo.cl`, password: 'secreto8' })
+      .expect(201);
+    const bearer = `Bearer ${reg.body.token as string}`;
+    const pub = await http()
+      .post('/v1/opportunities')
+      .set('Authorization', bearer)
+      .send({ tipo: 'scheduled', categoria_id: 'a0000000-0000-4000-8000-000000000002', precio_ref: 50000 })
+      .expect(201);
+    const ag = await http().post(`/v1/opportunities/${pub.body.id}/agreement`).expect(201);
+    await http()
+      .post(`/v1/agreements/${ag.body.id}/accept`)
+      .send({ version_n: 1, step_up: { metodo: 'pin', token: 't' } })
+      .expect(409);
+  });
+
+  it('accept con version_n obsoleta → 409 (concurrencia optimista)', async () => {
+    const feed = await http().get('/v1/opportunities').expect(200);
+    const opp = (feed.body as Array<{ id: string; estado: string }>).find(
+      (o) => o.estado === 'publicado',
+    )!;
+    const ag = await http().post(`/v1/opportunities/${opp.id}/agreement`).expect(201);
+    await http()
+      .post(`/v1/agreements/${ag.body.id}/accept`)
+      .send({ version_n: 99, step_up: { metodo: 'pin', token: 't' } })
+      .expect(409);
+  });
+
+  it('publicar con NUL (0x00) en descripcion → 400, no 500', () =>
+    http()
+      .post('/v1/opportunities')
+      .send({
+        tipo: 'urgent',
+        categoria_id: 'a0000000-0000-4000-8000-000000000003',
+        descripcion: 'x' + String.fromCharCode(0) + 'y',
+      })
+      .expect(400));
+
+  it('topup con monto fuera de rango (1e30) → 422, no desborda BIGINT (500)', () =>
+    http()
+      .post('/v1/wallet/topup')
+      .set('Idempotency-Key', 'e2e-overflow')
+      .send({ monto: 1e30 })
+      .expect(422));
+
   it('flujo de escrow: acuerdo → retención → liberación (comisión 20% exacta)', async () => {
     await http()
       .post('/v1/wallet/topup')

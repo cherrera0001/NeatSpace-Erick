@@ -1,11 +1,14 @@
-import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { MONTO_MAX } from '../common/validation';
 
 // DTOs de escritura de dinero (TopupInput / WithdrawInput del OpenAPI).
 // El monto es un entero CLP; la comisión JAMÁS viaja en el request (RN-2).
+// `@Max` evita que un entero enorme (1e30 pasa @IsInt) desborde el BIGINT (→ 500).
 
 export class TopupDto {
   @IsInt()
   @Min(1)
+  @Max(MONTO_MAX)
   monto!: number;
 
   @IsOptional()
@@ -16,6 +19,7 @@ export class TopupDto {
 export class WithdrawDto {
   @IsInt()
   @Min(1)
+  @Max(MONTO_MAX)
   monto!: number;
 
   @IsString()

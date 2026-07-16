@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   UnauthorizedException,
@@ -8,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { DbService } from '../db/db.service';
 import { RegisterDto, LoginDto } from './dto';
+import { assertNoControlChars } from '../common/validation';
 
 // Hash "señuelo" precomputado: se compara contra él cuando el email NO existe,
 // para que el login tarde lo mismo exista o no (evita user-enumeration por timing).
@@ -23,7 +23,7 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<{ token: string; usuario: unknown }> {
-    assertNoControlChars(dto.nombre); // 0x00-0x1F rompería el INSERT en text (→ 500)
+    assertNoControlChars(dto.nombre, 'nombre'); // 0x00-0x1F rompería el INSERT en text (→ 500)
     const hash = await bcrypt.hash(dto.password, 10);
     const usuario = await this.db.tx(async (c) => {
       // Pre-check (camino feliz); la unicidad REAL la garantiza el UNIQUE de la BD.
@@ -98,17 +98,6 @@ export class AuthService {
 
   private sign(sub: string): Promise<string> {
     return this.jwt.signAsync({ sub });
-  }
-}
-
-/** Rechaza caracteres de control (0x00-0x1F): PostgreSQL no los admite en columnas text. */
-function assertNoControlChars(s: string): void {
-  for (let i = 0; i < s.length; i++) {
-    if (s.charCodeAt(i) < 0x20) {
-      throw new BadRequestException(
-        'nombre contiene caracteres de control invalidos',
-      );
-    }
   }
 }
 

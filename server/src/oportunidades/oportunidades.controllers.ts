@@ -13,6 +13,7 @@ import type { Request } from 'express';
 import { OportunidadInputDto } from './dto';
 import { DbService } from '../db/db.service';
 import { currentUserId, DEMO_CLIENTE } from '../common/jwt';
+import { assertNoControlChars } from '../common/validation';
 
 // Contexto Oportunidades + entrada a NeatMatch (doc 07 §1).
 
@@ -24,6 +25,8 @@ export class OpportunitiesController {
   @Post()
   async create(@Body() dto: OportunidadInputDto, @Req() req: Request): Promise<unknown> {
     const uid = currentUserId(req) ?? DEMO_CLIENTE;
+    assertNoControlChars(dto.zona, 'zona'); // van a columnas text → NUL rompería el INSERT (→ 500)
+    assertNoControlChars(dto.descripcion, 'descripcion');
     const geo = JSON.stringify({ lat: dto.lat ?? -33.045, lng: dto.lng ?? -71.62 });
     // La geo va como jsonb; en PostgreSQL real se convierte a geometry(Point,4326).
     const geoExpr =

@@ -271,10 +271,16 @@ paths:
       parameters: [ { $ref: '#/components/parameters/PathId' } ]
       responses:
         '201':
-          description: Sala abierta
+          description: |
+            Sala abierta. En el perfil embebido se devuelve la proyección compacta
+            `AcuerdoAbierto` (`{id, precio, estado}`); en producción, el `Acuerdo` completo.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Acuerdo' }
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/AcuerdoAbierto' }
+                  - { $ref: '#/components/schemas/Acuerdo' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /agreements/{id}:
     get:
       tags: [SalaDeAcuerdo]
@@ -345,10 +351,14 @@ paths:
       summary: Acepta la versión vigente por tu parte (requiere step-up de identidad)
       description: |
         Exige confirmación de step-up (PIN/biometría), obligatoria sobre umbral de monto
-        para no repudio. Con versión desactualizada → 409. La doble aceptación gatilla la
-        retención de escrow; si la retención falla, el acuerdo pasa a PAGO_FALLIDO (doc 03).
+        para no repudio. Con `version_n` desactualizada → 409. La aceptación gatilla la
+        retención de escrow (débito cliente → crédito ESCROW); si el cliente no tiene
+        fondos suficientes → 409 (PAGO_FALLIDO). En el perfil embebido responde `201`
+        con la proyección compacta `RetencionResultado` (`{estado, retenido}`); en
+        producción, el `Acuerdo` completo.
       operationId: acceptAgreement
       x-source: doc 03 §4.1, §11
+      x-demo-behavior: 201 RetencionResultado; 409 si version_n obsoleta o fondos insuficientes
       parameters: [ { $ref: '#/components/parameters/PathId' } ]
       requestBody:
         required: true
@@ -356,13 +366,19 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/AcceptInput' }
       responses:
+        '201':
+          description: '[embebido/demo] Retención registrada'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetencionResultado' }
         '200':
-          description: Aceptación registrada (y escrow retenido si ambas partes aceptaron)
+          description: '[producción] Aceptación registrada (escrow retenido)'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Acuerdo' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Versión desactualizada o pago fallido
+          description: Versión desactualizada o fondos insuficientes (PAGO_FALLIDO)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -395,12 +411,28 @@ paths:
     post:
       tags: [SalaDeAcuerdo]
       summary: El cliente confirma la entrega (→ CERRADO + libera escrow)
-      description: Si vence la ventana de reclamo (24–48h), la liberación es automática (doc 03 §10).
+      description: |
+        Libera el escrow: ESCROW → profesional (neto) + COMISION (20%). Sólo procede si
+        el acuerdo está ACORDADO (retenido); si no hay retención previa → 409. Si vence la
+        ventana de reclamo (24–48h), la liberación es automática (doc 03 §10). En el perfil
+        embebido responde `201` con `LiberacionResultado` (`{estado, neto_profesional, comision}`).
       operationId: confirm
       x-source: doc 03 §10, §11
+      x-demo-behavior: 201 LiberacionResultado; 409 si no hay retención (estado ≠ ACORDADO)
       parameters: [ { $ref: '#/components/parameters/PathId' } ]
       responses:
-        '200': { description: "Entrega confirmada, escrow liberado" }
+        '201':
+          description: '[embebido/demo] Entrega confirmada, escrow liberado'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiberacionResultado' }
+        '200': { description: '[producción] Entrega confirmada, escrow liberado' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: No hay retención que liberar (estado ≠ ACORDADO)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /agreements/{id}/cancel:
     post:
       tags: [SalaDeAcuerdo]
@@ -494,9 +526,15 @@ paths:
     post:
       tags: [NeatWallet]
       summary: Inicia un abono vía MercadoPago
-      description: No asienta; el asiento se crea sólo al recibir `approved` por webhook (doc 04 §6).
+      description: |
+        **Perfil producción:** no asienta; el asiento se crea sólo al recibir `approved`
+        por webhook (doc 04 §6) → responde `202 PagoIntento`.
+        **Perfil embebido (demo, sin pasarela):** liquida sincrónicamente con un asiento de
+        partida doble PASARELA→billetera y responde `201 TopupResultado`. El webhook no existe
+        en este perfil, por lo que el abono se confirma en el acto.
       operationId: topup
       x-source: doc 04 §9
+      x-demo-behavior: 201 síncrono (TopupResultado); producción usa 202 + webhook
       parameters: [ { $ref: '#/components/parameters/IdempotencyKey' } ]
       requestBody:
         required: true
@@ -505,11 +543,17 @@ paths:
             schema: { $ref: '#/components/schemas/TopupInput' }
       responses:
         '202':
-          description: Intento de abono iniciado (pendiente)
+          description: '[producción] Intento de abono iniciado (pendiente de webhook)'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PagoIntento' }
+        '201':
+          description: '[embebido/demo] Abono liquidado sincrónicamente'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopupResultado' }
         '400': { $ref: '#/components/responses/MissingIdempotencyKey' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
   /wallet/withdraw:
     post:
       tags: [NeatWallet]
@@ -889,6 +933,41 @@ components:
         aceptado_cliente: { type: boolean }
         aceptado_profesional: { type: boolean }
         direccion_revelada: { type: boolean, description: 'Sólo tras ACORDADO / urgente asignado' }
+
+    # ── Proyecciones compactas del perfil embebido (demo). Documentan la respuesta
+    #    real del servidor sin pasarela/webhook; en producción se devuelve el objeto completo.
+    AcuerdoAbierto:
+      description: '[embebido] Proyección devuelta por openAgreement.'
+      type: object
+      required: [id, precio, estado]
+      properties:
+        id: { type: string }
+        precio: { type: integer, description: 'CLP' }
+        estado: { type: string, enum: [ABIERTA] }
+    RetencionResultado:
+      description: '[embebido] Proyección devuelta por acceptAgreement tras retener en escrow.'
+      type: object
+      required: [estado, retenido]
+      properties:
+        estado: { type: string, enum: [ACORDADO] }
+        retenido: { type: integer, description: 'Monto retenido en escrow (CLP)' }
+    LiberacionResultado:
+      description: '[embebido] Proyección devuelta por confirmAgreement tras liberar escrow.'
+      type: object
+      required: [estado, neto_profesional, comision]
+      properties:
+        estado: { type: string, enum: [CERRADO] }
+        neto_profesional: { type: integer, description: 'Pago neto al profesional (CLP)' }
+        comision: { type: integer, description: 'Comisión NeatSpace 20% (CLP)' }
+    TopupResultado:
+      description: '[embebido] Proyección devuelta por topup tras liquidar sincrónicamente.'
+      type: object
+      required: [ok, monto, saldo]
+      properties:
+        ok: { type: boolean }
+        monto: { type: integer, description: 'Monto abonado (CLP)' }
+        saldo: { type: integer, description: 'Saldo resultante de la billetera (CLP)' }
+
     AcuerdoVersionInput:
       type: object
       required: [terminos]
