@@ -30,7 +30,7 @@ export class AuthService {
       const dup = await c.query('SELECT 1 FROM usuario WHERE email = $1', [
         dto.email,
       ]);
-      if (dup.rowCount) {
+      if (dup.rows.length) {
         throw new ConflictException('email ya registrado');
       }
       let u;
@@ -112,12 +112,9 @@ function assertNoControlChars(s: string): void {
   }
 }
 
-/** True si el error de `pg` es una violación de unicidad (SQLSTATE 23505). */
+/** True si el error es una violación de unicidad (SQLSTATE 23505 en pg; mensaje en PGlite). */
 function isUniqueViolation(e: unknown): boolean {
-  return (
-    typeof e === 'object' &&
-    e !== null &&
-    'code' in e &&
-    (e as { code?: string }).code === '23505'
-  );
+  const code = (e as { code?: string })?.code;
+  const msg = String((e as { message?: string })?.message ?? '');
+  return code === '23505' || /duplicate key|unique constraint|violates unique/i.test(msg);
 }
