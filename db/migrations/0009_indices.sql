@@ -32,6 +32,7 @@ CREATE INDEX idx_post_prof      ON postulacion (profesional_id);
 CREATE INDEX idx_eval_evaluador ON evaluacion (evaluador_id);
 CREATE INDEX idx_pago_acuerdo   ON pago (acuerdo_id);
 CREATE INDEX idx_disputa_abre   ON disputa (abierta_por);
+CREATE INDEX idx_empmiembro_usuario ON empresa_miembro (usuario_id);  -- soporta el ON DELETE CASCADE
 
 -- Hilo de la Sala de Acuerdo (chat y ofertas): consultas WHERE acuerdo_id ORDER BY creado_en
 CREATE INDEX idx_mensaje_acuerdo ON mensaje (acuerdo_id, creado_en);

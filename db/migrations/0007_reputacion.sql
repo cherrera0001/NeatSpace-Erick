@@ -7,6 +7,7 @@ CREATE TABLE evaluacion (
   servicio_id  uuid NOT NULL REFERENCES acuerdo(id),   -- servicio ≡ acuerdo
   evaluador_id uuid NOT NULL REFERENCES usuario(id),
   evaluado_id  uuid NOT NULL REFERENCES usuario(id),
+  rol_evaluado parte_acuerdo,                 -- faceta evaluada (cliente|profesional): base de la segmentación por rol del Trust Score (doc 05)
   estrellas    smallint NOT NULL CHECK (estrellas BETWEEN 1 AND 5),
   atributos    jsonb NOT NULL DEFAULT '{}',
   comentario   text,                     -- moderado + PII-limpio antes de visible

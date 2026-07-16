@@ -11,6 +11,19 @@ BEGIN;
 INSERT INTO usuario (id, email, password_hash)
   VALUES ('11111111-1111-1111-1111-111111111111', 'a@test.cl', 'x')
   ON CONFLICT DO NOTHING;
+INSERT INTO usuario (id, email, password_hash)
+  VALUES ('22222222-2222-2222-2222-222222222222', 'b@test.cl', 'x')
+  ON CONFLICT DO NOTHING;
+
+-- ── RN-1 / TC-I06: transaccion.idempotency_key único (aquí el modo es DEFERRED) ──
+DO $$
+BEGIN
+  INSERT INTO transaccion (tipo, idempotency_key) VALUES ('topup','dup-key-I06');
+  INSERT INTO transaccion (tipo, idempotency_key) VALUES ('topup','dup-key-I06');
+  RAISE EXCEPTION 'FALLO TC-I06: idempotency_key duplicada aceptada';
+EXCEPTION WHEN unique_violation THEN
+  RAISE NOTICE 'OK TC-I06: idempotency_key rechaza duplicado';
+END $$;
 
 -- ── IN-1: XOR de identidad de billetera ──────────────────────────────────────
 -- (a) doble identidad (usuario_id + rol_sistema) debe ser rechazada
@@ -128,6 +141,74 @@ BEGIN
   RAISE EXCEPTION 'FALLO: se aceptó retención > monto_bruto';
 EXCEPTION WHEN check_violation THEN
   RAISE NOTICE 'OK: doc_retencion_le_bruto rechaza retención > bruto';
+END $$;
+
+-- ── IN-5 / TC-I05: oportunidad.tipo inmutable (opp_tipo_guard) ────────────────
+DO $$
+DECLARE cat uuid; opp uuid;
+BEGIN
+  INSERT INTO categoria (nombre, nivel) VALUES ('TestCat', 1) RETURNING id INTO cat;
+  INSERT INTO oportunidad (cliente_id, tipo, categoria_id, geo_aprox)
+    VALUES ('11111111-1111-1111-1111-111111111111','urgent',cat,
+            ST_SetSRID(ST_MakePoint(-71.6,-33.0),4326)) RETURNING id INTO opp;
+  BEGIN
+    UPDATE oportunidad SET tipo='scheduled' WHERE id = opp;
+    RAISE EXCEPTION 'FALLO TC-I05: se permitió cambiar oportunidad.tipo';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+    RAISE NOTICE 'OK TC-I05: oportunidad.tipo inmutable (%).', SQLERRM;
+  END;
+END $$;
+
+-- ── IN-3 / TC-I03: append-only en reputation_log y acuerdo_version (UPDATE y DELETE) ──
+DO $$
+DECLARE aid uuid;
+BEGIN
+  INSERT INTO reputation_log (usuario_id, evento, payload, hash_actual)
+    VALUES ('11111111-1111-1111-1111-111111111111','evaluacion','{}'::jsonb, decode('00','hex'));
+  BEGIN
+    UPDATE reputation_log SET evento='sancion';
+    RAISE EXCEPTION 'FALLO: reputation_log permitió UPDATE';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+    RAISE NOTICE 'OK: reputation_log append-only UPDATE (%).', SQLERRM;
+  END;
+  BEGIN
+    DELETE FROM reputation_log;
+    RAISE EXCEPTION 'FALLO: reputation_log permitió DELETE';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+    RAISE NOTICE 'OK: reputation_log append-only DELETE (%).', SQLERRM;
+  END;
+  INSERT INTO acuerdo (estado) VALUES ('ACORDADO') RETURNING id INTO aid;
+  INSERT INTO acuerdo_version (acuerdo_id, n, precio) VALUES (aid, 1, 10000);
+  BEGIN
+    UPDATE acuerdo_version SET precio = 999 WHERE acuerdo_id = aid;
+    RAISE EXCEPTION 'FALLO: acuerdo_version permitió UPDATE';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+    RAISE NOTICE 'OK: acuerdo_version append-only UPDATE (%).', SQLERRM;
+  END;
+END $$;
+
+-- ── Guard de señal de reputación: estrellas inmutable; visible/comentario mutables ──
+DO $$
+DECLARE aid uuid;
+BEGIN
+  INSERT INTO acuerdo (estado) VALUES ('CERRADO') RETURNING id INTO aid;
+  INSERT INTO evaluacion (servicio_id, evaluador_id, evaluado_id, estrellas)
+    VALUES (aid,'11111111-1111-1111-1111-111111111111',
+                '22222222-2222-2222-2222-222222222222', 5);
+  BEGIN
+    UPDATE evaluacion SET estrellas = 1 WHERE servicio_id = aid;
+    RAISE EXCEPTION 'FALLO: se permitió mutar estrellas (señal de reputación)';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+    RAISE NOTICE 'OK: evaluacion bloquea mutar estrellas (%).', SQLERRM;
+  END;
+  UPDATE evaluacion SET visible = true WHERE servicio_id = aid;        -- double-blind: permitido
+  UPDATE evaluacion SET comentario = '[redactado]' WHERE servicio_id = aid; -- tombstone PII: permitido
+  RAISE NOTICE 'OK: evaluacion permite publicar (visible) y redactar comentario';
 END $$;
 
 SELECT 'constraints_test: OK' AS resultado;

@@ -221,7 +221,7 @@ POST /internal/reputation/recompute/{profileId}   # recomputa proyección desde 
 | Sanción luego revertida en apelación | Evento de reverso en el log; la proyección se recomputa. |
 | Intento de editar una reseña enviada | Bloqueado (inmutable); se admite una nota/evento nuevo. |
 | Descuadre proyección vs log | Alerta + recompute desde el log (el log manda). |
-| Perfil dual (mismo usuario cliente y profesional) | El Trust Score y los atributos se **segmentan por rol** (actuación como cliente vs. profesional): una mala conducta como cliente no contamina la reputación profesional y viceversa; el ranking de NeatMatch usa la faceta profesional. |
+| Perfil dual (mismo usuario cliente y profesional) | El Trust Score y los atributos se **segmentan por rol** (actuación como cliente vs. profesional): una mala conducta como cliente no contamina la reputación profesional y viceversa; el ranking de NeatMatch usa la faceta profesional. La dimensión de rol se captura en `evaluacion.rol_evaluado {cliente\|profesional}` (doc 08); la proyección por faceta se deriva de ahí. |
 
 ---
 

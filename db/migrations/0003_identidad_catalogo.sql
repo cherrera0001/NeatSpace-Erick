@@ -14,7 +14,8 @@ CREATE TABLE usuario (
 CREATE TABLE neatprofile (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   usuario_id         uuid NOT NULL UNIQUE REFERENCES usuario(id) ON DELETE CASCADE,
-  descripcion        text,
+  nombre             text,                    -- nombre visible de la persona
+  descripcion        text,                    -- texto libre del perfil (bio)
   habilidades        text[] NOT NULL DEFAULT '{}',
   cobertura_centro   geometry(Point,4326),
   cobertura_radio_km numeric(6,2),

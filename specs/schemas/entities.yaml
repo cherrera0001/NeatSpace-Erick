@@ -36,7 +36,8 @@ $defs:
     properties:
       id: { type: string }
       usuario_id: { type: string }
-      descripcion: { type: string }
+      nombre: { type: [string, 'null'] }
+      descripcion: { type: [string, 'null'] }
       habilidades: { type: array, items: { type: string } }
       cobertura_geo: { $ref: '#/$defs/GeoAprox' }
 
@@ -182,7 +183,7 @@ $defs:
         enum: [escrow, comision, pasarela, reembolsos, recupero, costo_psp, null]
       moneda: { type: string, default: CLP }
       creado_en: { type: string, format: date-time }
-    # CHECK ( num_nonnull(usuario_id, empresa_id, rol_sistema) = 1 )
+    # CHECK ( (usuario_id IS NOT NULL)::int + (empresa_id IS NOT NULL)::int + (rol_sistema IS NOT NULL)::int = 1 )
 
   Transaccion:
     x-source: doc 04 §3
@@ -232,6 +233,7 @@ $defs:
       servicio_id: { type: string }
       evaluador_id: { type: string }
       evaluado_id: { type: string }
+      rol_evaluado: { type: [string, 'null'], enum: [cliente, profesional, null], description: 'faceta evaluada; base de la segmentación por rol del Trust Score (doc 05)' }
       estrellas: { type: integer, minimum: 1, maximum: 5 }
       atributos: { type: object, additionalProperties: { type: boolean } }
       comentario: { type: [string, 'null'], description: 'Moderado + PII-limpio antes de visible' }

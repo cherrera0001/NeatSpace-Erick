@@ -49,7 +49,7 @@ export class AuthService {
       }
       const usuarioId = u.rows[0].id as string;
       const np = await c.query(
-        'INSERT INTO neatprofile (usuario_id, descripcion) VALUES ($1, $2) RETURNING id',
+        'INSERT INTO neatprofile (usuario_id, nombre) VALUES ($1, $2) RETURNING id, nombre',
         [usuarioId, dto.nombre],
       );
       // Billetera del usuario (tipo=usuario, XOR de identidad, doc 08 §6)
@@ -57,14 +57,24 @@ export class AuthService {
         "INSERT INTO neatwallet (tipo, usuario_id) VALUES ('usuario', $1)",
         [usuarioId],
       );
-      return { ...u.rows[0], neatprofile_id: np.rows[0].id };
+      // `usuario` en la respuesta es un NeatProfile (schema del contrato): id de
+      // perfil + usuario_id + nombre. El JWT se firma con el id de USUARIO.
+      return {
+        usuarioId,
+        profile: { id: np.rows[0].id, usuario_id: usuarioId, nombre: np.rows[0].nombre },
+      };
     });
-    return { token: await this.sign(usuario.id as string), usuario };
+    return {
+      token: await this.sign(usuario.usuarioId),
+      usuario: usuario.profile,
+    };
   }
 
   async login(dto: LoginDto): Promise<{ token: string; usuario: unknown }> {
     const r = await this.db.query(
-      'SELECT id, email, password_hash FROM usuario WHERE email = $1',
+      `SELECT u.id AS usuario_id, u.password_hash, np.id AS neatprofile_id, np.nombre
+         FROM usuario u JOIN neatprofile np ON np.usuario_id = u.id
+        WHERE u.email = $1`,
       [dto.email],
     );
     const row = r.rows[0];
@@ -76,8 +86,13 @@ export class AuthService {
       throw new UnauthorizedException('credenciales inválidas');
     }
     return {
-      token: await this.sign(row.id as string),
-      usuario: { id: row.id, email: row.email },
+      token: await this.sign(row.usuario_id as string),
+      // NeatProfile (schema del contrato)
+      usuario: {
+        id: row.neatprofile_id,
+        usuario_id: row.usuario_id,
+        nombre: row.nombre,
+      },
     };
   }
 
