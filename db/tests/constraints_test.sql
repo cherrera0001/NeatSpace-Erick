@@ -215,6 +215,13 @@ BEGIN
     IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
     RAISE NOTICE 'OK: evaluacion bloquea mutar estrellas (%).', SQLERRM;
   END;
+  BEGIN
+    UPDATE evaluacion SET rol_evaluado = 'cliente' WHERE servicio_id = aid;
+    RAISE EXCEPTION 'FALLO: se permitió mutar rol_evaluado (señal de reputación)';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM LIKE 'FALLO%' THEN RAISE; END IF;
+    RAISE NOTICE 'OK: evaluacion bloquea mutar rol_evaluado (%).', SQLERRM;
+  END;
   UPDATE evaluacion SET visible = true WHERE servicio_id = aid;        -- double-blind: permitido
   UPDATE evaluacion SET comentario = '[redactado]' WHERE servicio_id = aid; -- tombstone PII: permitido
   RAISE NOTICE 'OK: evaluacion permite publicar (visible) y redactar comentario';

@@ -36,6 +36,7 @@ BEGIN
   OR NEW.evaluado_id  <> OLD.evaluado_id
   OR NEW.estrellas    <> OLD.estrellas
   OR NEW.atributos    <> OLD.atributos
+  OR NEW.rol_evaluado IS DISTINCT FROM OLD.rol_evaluado  -- también es señal (nullable → IS DISTINCT FROM)
   OR NEW.creado_en    <> OLD.creado_en THEN
     RAISE EXCEPTION 'evaluacion es inmutable salvo visible/comentario (señal de reputación protegida)';
   END IF;
