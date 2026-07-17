@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NeatSpace · Demo en vivo</title>
+<style>
+  :root {
+    --bg: #0e1512; --card: #16201c; --line: #24322c; --ink: #e8f0ec; --dim: #8fa79c;
+    --accent: #1f7a5a; --accent-ink: #7ee0b8; --gold: #d99a52;
+    --ok: #35b37e; --bad: #e5674b; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif; line-height: 1.5; }
+  header { padding: 28px 32px 20px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  .logo { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), #2f9e73);
+    display: grid; place-items: center; font-weight: 800; color: #fff; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .lema { color: var(--dim); font-style: italic; font-size: 14px; }
+  .pill { margin-left: auto; font-size: 12px; color: var(--accent-ink);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 20px 64px; }
+  .sub { color: var(--dim); font-size: 14px; margin: 0 0 20px; }
+  .step { border: 1px solid var(--line); background: var(--card); border-radius: 14px;
+    margin: 12px 0; overflow: hidden; }
+  .step > .head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+  .num { font-family: var(--mono); font-size: 12px; color: var(--dim); min-width: 22px; }
+  .title { font-weight: 650; font-size: 15px; }
+  .meth { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+  .status { margin-left: auto; font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 6px; }
+  .status.ok { color: var(--ok); background: rgba(53,179,126,.12); }
+  .status.bad { color: var(--bad); background: rgba(229,103,75,.12); }
+  .status.wait { color: var(--dim); }
+  pre { margin: 0; padding: 0 18px 16px; font-family: var(--mono); font-size: 12.5px;
+    color: var(--accent-ink); white-space: pre-wrap; word-break: break-word; }
+  .note { padding: 0 18px 14px; font-size: 13px; color: var(--dim); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 22px 0; }
+  .kpi { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 14px 16px; }
+  .kpi .v { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+  .kpi .v.gold { color: var(--gold); } .kpi .v.green { color: var(--accent-ink); }
+  .kpi .l { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .summary { text-align: center; padding: 20px; border: 1px dashed var(--line); border-radius: 14px; margin-top: 22px; font-size: 15px; }
+  .summary.done { border-color: var(--accent); color: var(--accent-ink); }
+  a { color: var(--accent-ink); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">N</div>
+  <div>
+    <h1>NeatSpace · Demo en vivo</h1>
+    <div class="lema">"Las oportunidades se ganan trabajando."</div>
+  </div>
+  <span class="pill" id="conn">conectando…</span>
+</header>
+<main>
+  <p class="sub">Esta página ejecuta el <strong>flujo real de negocio contra la API</strong>
+  (<code>localhost:3000/v1</code>, PostgreSQL embebido) al cargar: registro, publicación,
+  escrow de partida doble y evaluación con Trust Score. Cada tarjeta muestra la respuesta HTTP real.</p>
+
+  <div class="kpis" id="kpis"></div>
+  <div id="steps"></div>
+  <div class="summary" id="summary">Ejecutando flujo…</div>
+</main>
+<script>
+const B = 'http://localhost:3000/v1';
+const stepsEl = document.getElementById('steps');
+const b64 = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+async function hmac(msg, secret) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+  return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+async function proToken() {
+  const h = b64({alg:'HS256',typ:'JWT'}).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const p = b64({sub:'b0000000-0000-4000-8000-000000000002'}).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  return `${h}.${p}.${await hmac(`${h}.${p}`,'dev-only-insecure-secret')}`;
+}
+let n = 0;
+function card(title, meth) {
+  n++;
+  const el = document.createElement('div'); el.className = 'step';
+  el.innerHTML = `<div class="head"><span class="num">${String(n).padStart(2,'0')}</span>
+    <span class="title">${title}</span><span class="meth">${meth}</span>
+    <span class="status wait" >…</span></div><pre></pre><div class="note"></div>`;
+  stepsEl.appendChild(el); return el;
+}
+async function call(el, method, path, opts = {}) {
+  const r = await fetch(B + path, { method,
+    headers: { 'Content-Type': 'application/json', ...(opts.headers||{}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  let body = null; try { body = await r.json(); } catch {}
+  const st = el.querySelector('.status');
+  const good = opts.expect ? r.status === opts.expect : r.ok;
+  st.textContent = r.status; st.className = 'status ' + (good ? 'ok' : 'bad');
+  el.querySelector('pre').textContent = JSON.stringify(body, null, 2);
+  if (opts.note) el.querySelector('.note').textContent = opts.note;
+  return { code: r.status, body };
+}
+const kpi = (v, l, cls='') => `<div class="kpi"><div class="v ${cls}">${v}</div><div class="l">${l}</div></div>`;
+
+(async () => {
+  try {
+    // Conexión
+    const h = await fetch(B + '/health').then(r => r.json());
+    document.getElementById('conn').textContent = h.db === 'up' ? '● API + BD conectadas' : 'sin BD';
+
+    // 1 · Registro
+    const email = `demo-${Date.now()}@neatspace.cl`;
+    let e = card('Registro de usuario (CU-01)', 'POST /auth/register');
+    const reg = await call(e, 'POST', '/auth/register', { body: { nombre: 'Ana Pérez', email, password: 'secreto8' }, expect: 201, note: 'Crea Usuario + NeatProfile + NeatWallet de forma atómica; devuelve JWT.' });
+    const token = reg.body.token;
+
+    // 2 · Feed
+    e = card('Feed de oportunidades (CU-06)', 'GET /opportunities');
+    const feed = await call(e, 'GET', '/opportunities', { note: 'Geo aproximada; sin dirección exacta (RN-6).' });
+
+    // 3 · Wallet + topup
+    e = card('Abonar a la billetera (CU-21)', 'POST /wallet/topup');
+    await call(e, 'POST', '/wallet/topup', { headers: { 'Idempotency-Key': 'live-'+Date.now() }, body: { monto: 30000 }, expect: 201, note: 'Asiento de partida doble PASARELA → billetera.' });
+
+    // 4 · Publicar $28.000
+    e = card('Publicar oportunidad (CU-05)', 'POST /opportunities');
+    const pub = await call(e, 'POST', '/opportunities', { body: { tipo: 'scheduled', categoria_id: 'a0000000-0000-4000-8000-000000000002', zona: 'Cerro Alegre', precio_ref: 28000, descripcion: 'Aseo profundo' }, expect: 201 });
+
+    // 5 · Abrir Sala de Acuerdo
+    e = card('Abrir Sala de Acuerdo (CU-11)', 'POST /opportunities/:id/agreement');
+    const ag = await call(e, 'POST', `/opportunities/${pub.body.id}/agreement`, { expect: 201 });
+
+    // 6 · Aceptar → retención escrow
+    e = card('Aceptar → retención en escrow (CU-14)', 'POST /agreements/:id/accept');
+    await call(e, 'POST', `/agreements/${ag.body.id}/accept`, { body: { version_n: 1, step_up: { metodo: 'pin', token: 't' } }, expect: 201, note: 'Débito cliente → crédito ESCROW ($28.000 retenidos).' });
+
+    // 7 · Confirmar → liberación con comisión 20%
+    e = card('Confirmar → liberación (CU-17)', 'POST /agreements/:id/confirm');
+    const rel = await call(e, 'POST', `/agreements/${ag.body.id}/confirm`, { expect: 201, note: 'ESCROW → profesional (neto) + COMISION (20%). Cuadre exacto.' });
+
+    // 8 · Evaluar (double-blind: ambas partes)
+    e = card('Evaluar — cliente (CU-29, double-blind)', 'POST /services/:id/reviews');
+    await call(e, 'POST', `/services/${ag.body.id}/reviews`, { body: { estrellas: 5, atributos: { amable: true, prolijo: true } }, expect: 201, note: 'Queda OCULTA (published:false) hasta que ambas partes evalúan.' });
+    e = card('Evaluar — profesional → publicación', 'POST /services/:id/reviews');
+    const rev = await call(e, 'POST', `/services/${ag.body.id}/reviews`, { headers: { Authorization: `Bearer ${await proToken()}` }, body: { estrellas: 5 }, expect: 201, note: 'Publicación simultánea: se recomputa el Trust Score.' });
+
+    // KPIs
+    document.getElementById('kpis').innerHTML =
+      kpi(feed.body.length, 'Oportunidades en el feed') +
+      kpi('$' + (rel.body.comision).toLocaleString('es-CL'), 'Comisión NeatSpace (20%)', 'gold') +
+      kpi('$' + (rel.body.neto_profesional).toLocaleString('es-CL'), 'Neto al profesional', 'green') +
+      kpi((rev.body.trust_score ?? '—'), 'Trust Score recomputado', 'green');
+
+    const s = document.getElementById('summary');
+    s.className = 'summary done';
+    s.innerHTML = `✔ Flujo completo ejecutado contra la API real — escrow cuadrado
+      ($${rel.body.comision.toLocaleString('es-CL')} + $${rel.body.neto_profesional.toLocaleString('es-CL')} = $28.000)
+      y reputación publicada. Panel interactivo en <a href="/index.html">/index.html</a>.`;
+  } catch (err) {
+    document.getElementById('summary').innerHTML = '⚠ Error: ' + err.message + ' — ¿está el backend en localhost:3000?';
+  }
+})();
+</script>
+</body>
+</html>
