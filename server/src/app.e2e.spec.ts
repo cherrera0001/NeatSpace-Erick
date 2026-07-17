@@ -97,6 +97,21 @@ describe('Validación de contrato (e2e)', () => {
   it('login credenciales inválidas → 401', () =>
     http().post('/v1/auth/login').send({ email: 'nadie@demo.cl', password: 'malo' }).expect(401));
 
+  it('email case-insensitive: registrar con mayúsculas y loguear en minúsculas (mismo dueño)', async () => {
+    const base = `case-${Date.now()}`;
+    await http()
+      .post('/v1/auth/register')
+      .send({ nombre: 'Case', email: `${base}@Demo.CL`.toUpperCase(), password: 'secreto8' })
+      .expect(201);
+    // Login con otra caja → misma cuenta (citext en prod, normalizado en la app).
+    await http().post('/v1/auth/login').send({ email: `${base}@demo.cl`, password: 'secreto8' }).expect(200);
+    // Re-registro con distinta caja → 409 (no crea cuenta duplicada).
+    await http()
+      .post('/v1/auth/register')
+      .send({ nombre: 'Dup', email: `${base}@demo.cl`, password: 'secreto8' })
+      .expect(409);
+  });
+
   it('cuerpo de error cumple el contrato: code (string) + message (string)', async () => {
     const r = await http().post('/v1/auth/login').send({ email: 'nadie@demo.cl', password: 'malo' }).expect(401);
     expect(typeof r.body.code).toBe('string'); // discriminador del contrato Error

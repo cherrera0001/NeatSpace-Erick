@@ -24,11 +24,12 @@ export class AuthService {
 
   async register(dto: RegisterDto): Promise<{ token: string; usuario: unknown }> {
     assertNoControlChars(dto.nombre, 'nombre'); // 0x00-0x1F rompería el INSERT en text (→ 500)
+    const email = normalizeEmail(dto.email);
     const hash = await bcrypt.hash(dto.password, 10);
     const usuario = await this.db.tx(async (c) => {
       // Pre-check (camino feliz); la unicidad REAL la garantiza el UNIQUE de la BD.
       const dup = await c.query('SELECT 1 FROM usuario WHERE email = $1', [
-        dto.email,
+        email,
       ]);
       if (dup.rows.length) {
         throw new ConflictException('email ya registrado');
@@ -37,7 +38,7 @@ export class AuthService {
       try {
         u = await c.query(
           'INSERT INTO usuario (email, password_hash) VALUES ($1, $2) RETURNING id, email, creado_en',
-          [dto.email, hash],
+          [email, hash],
         );
       } catch (e) {
         // Carrera TOCTOU: dos registros concurrentes pasan el SELECT y el 2º
@@ -75,7 +76,7 @@ export class AuthService {
       `SELECT u.id AS usuario_id, u.password_hash, np.id AS neatprofile_id, np.nombre
          FROM usuario u JOIN neatprofile np ON np.usuario_id = u.id
         WHERE u.email = $1`,
-      [dto.email],
+      [normalizeEmail(dto.email)],
     );
     const row = r.rows[0];
     // Siempre se ejecuta un bcrypt.compare (contra el hash real o el señuelo) → tiempo
@@ -99,6 +100,16 @@ export class AuthService {
   private sign(sub: string): Promise<string> {
     return this.jwt.signAsync({ sub });
   }
+}
+
+/**
+ * Normaliza el email a minúsculas + trim. En producción la columna es `citext`
+ * (case-insensitive), pero PGlite no soporta citext y el transform la degrada a `text`
+ * (case-sensitive). Normalizar en la app hace que la identidad del email sea
+ * case-insensitive en AMBOS motores (Foo@x.cl ≡ foo@x.cl), evitando cuentas duplicadas.
+ */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 /** True si el error es una violación de unicidad (SQLSTATE 23505 en pg; mensaje en PGlite). */
