@@ -97,6 +97,18 @@ describe('Validación de contrato (e2e)', () => {
   it('login credenciales inválidas → 401', () =>
     http().post('/v1/auth/login').send({ email: 'nadie@demo.cl', password: 'malo' }).expect(401));
 
+  it('cuerpo de error cumple el contrato: code (string) + message (string)', async () => {
+    const r = await http().post('/v1/auth/login').send({ email: 'nadie@demo.cl', password: 'malo' }).expect(401);
+    expect(typeof r.body.code).toBe('string'); // discriminador del contrato Error
+    expect(r.body.code).toBe('UNAUTHORIZED');
+    expect(typeof r.body.message).toBe('string');
+    // 422 de validación: message es string (no array) y el detalle va en details.errors
+    const v = await http().post('/v1/auth/register').send({ email: 'no-email', password: '1' }).expect(422);
+    expect(v.body.code).toBe('UNPROCESSABLE_ENTITY');
+    expect(typeof v.body.message).toBe('string');
+    expect(Array.isArray(v.body.details?.errors)).toBe(true);
+  });
+
   it('feed de oportunidades → 200 con datos sembrados', async () => {
     const r = await http().get('/v1/opportunities').expect(200);
     expect(Array.isArray(r.body)).toBe(true);

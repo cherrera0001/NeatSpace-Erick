@@ -1026,10 +1026,14 @@ components:
         version_n: { type: integer, description: 'Versión que se acepta; 409 si ya cambió' }
         step_up:
           type: object
-          description: Confirmación de identidad para no repudio (doc 03 §4.1)
+          description: |
+            Confirmación de identidad para no repudio (doc 03 §4.1). `metodo` y `token`
+            son OBLIGATORIOS: el step-up se exige y verifica server-side antes de retener,
+            así que un cuerpo sin ellos se rechaza (422).
+          required: [metodo, token]
           properties:
             metodo: { type: string, enum: [pin, biometria, otro] }
-            token: { type: string }
+            token: { type: string, minLength: 1 }
     AmendmentInput:
       type: object
       required: [cambio]

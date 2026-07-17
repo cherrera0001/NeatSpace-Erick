@@ -284,8 +284,11 @@ export interface paths {
         /**
          * Acepta la versión vigente por tu parte (requiere step-up de identidad)
          * @description Exige confirmación de step-up (PIN/biometría), obligatoria sobre umbral de monto
-         *     para no repudio. Con versión desactualizada → 409. La doble aceptación gatilla la
-         *     retención de escrow; si la retención falla, el acuerdo pasa a PAGO_FALLIDO (doc 03).
+         *     para no repudio. Con `version_n` desactualizada → 409. La aceptación gatilla la
+         *     retención de escrow (débito cliente → crédito ESCROW); si el cliente no tiene
+         *     fondos suficientes → 409 (PAGO_FALLIDO). En el perfil embebido responde `201`
+         *     con la proyección compacta `RetencionResultado` (`{estado, retenido}`); en
+         *     producción, el `Acuerdo` completo.
          */
         post: operations["acceptAgreement"];
         delete?: never;
@@ -342,7 +345,10 @@ export interface paths {
         put?: never;
         /**
          * El cliente confirma la entrega (→ CERRADO + libera escrow)
-         * @description Si vence la ventana de reclamo (24–48h), la liberación es automática (doc 03 §10).
+         * @description Libera el escrow: ESCROW → profesional (neto) + COMISION (20%). Sólo procede si
+         *     el acuerdo está ACORDADO (retenido); si no hay retención previa → 409. Si vence la
+         *     ventana de reclamo (24–48h), la liberación es automática (doc 03 §10). En el perfil
+         *     embebido responde `201` con `LiberacionResultado` (`{estado, neto_profesional, comision}`).
          */
         post: operations["confirm"];
         delete?: never;
@@ -468,7 +474,11 @@ export interface paths {
         put?: never;
         /**
          * Inicia un abono vía MercadoPago
-         * @description No asienta; el asiento se crea sólo al recibir `approved` por webhook (doc 04 §6).
+         * @description **Perfil producción:** no asienta; el asiento se crea sólo al recibir `approved`
+         *     por webhook (doc 04 §6) → responde `202 PagoIntento`.
+         *     **Perfil embebido (demo, sin pasarela):** liquida sincrónicamente con un asiento de
+         *     partida doble PASARELA→billetera y responde `201 TopupResultado`. El webhook no existe
+         *     en este perfil, por lo que el abono se confirma en el acto.
          */
         post: operations["topup"];
         delete?: never;
@@ -736,16 +746,28 @@ export interface components {
             zona?: string;
             radio_m?: number;
         };
+        /**
+         * @description Publicar oportunidad (CU-05). La categoría se referencia por su UUID
+         *     (`categoria_id`) y la geo aproximada por `lat`/`lng` opcionales (el feed nunca
+         *     expone la dirección exacta, RN-6). `tipo` es INMUTABLE (IN-5).
+         */
         OportunidadInput: {
             /** @enum {string} */
             tipo: "urgent" | "scheduled";
-            categoria: string;
-            geo: components["schemas"]["GeoAprox"];
+            /**
+             * Format: uuid
+             * @description UUID de la categoría (referencia a Categoria.id)
+             */
+            categoria_id: string;
+            /** @description Zona/comuna aproximada (texto) */
+            zona?: string | null;
+            /** @description Latitud aproximada (RN-6) */
+            lat?: number | null;
+            /** @description Longitud aproximada (RN-6) */
+            lng?: number | null;
             /** @description CLP */
-            precio_ref?: number;
-            /** Format: date-time */
-            fecha?: string | null;
-            descripcion?: string;
+            precio_ref?: number | null;
+            descripcion?: string | null;
         };
         Oportunidad: {
             id?: string;
@@ -799,6 +821,38 @@ export interface components {
             /** @description Sólo tras ACORDADO / urgente asignado */
             direccion_revelada?: boolean;
         };
+        /** @description [embebido] Proyección devuelta por openAgreement. */
+        AcuerdoAbierto: {
+            id: string;
+            /** @description CLP */
+            precio: number;
+            /** @enum {string} */
+            estado: "ABIERTA";
+        };
+        /** @description [embebido] Proyección devuelta por acceptAgreement tras retener en escrow. */
+        RetencionResultado: {
+            /** @enum {string} */
+            estado: "ACORDADO";
+            /** @description Monto retenido en escrow (CLP) */
+            retenido: number;
+        };
+        /** @description [embebido] Proyección devuelta por confirmAgreement tras liberar escrow. */
+        LiberacionResultado: {
+            /** @enum {string} */
+            estado: "CERRADO";
+            /** @description Pago neto al profesional (CLP) */
+            neto_profesional: number;
+            /** @description Comisión NeatSpace 20% (CLP) */
+            comision: number;
+        };
+        /** @description [embebido] Proyección devuelta por topup tras liquidar sincrónicamente. */
+        TopupResultado: {
+            ok: boolean;
+            /** @description Monto abonado (CLP) */
+            monto: number;
+            /** @description Saldo resultante de la billetera (CLP) */
+            saldo: number;
+        };
         AcuerdoVersionInput: {
             terminos: components["schemas"]["Terminos"];
         };
@@ -832,11 +886,15 @@ export interface components {
         AcceptInput: {
             /** @description Versión que se acepta; 409 si ya cambió */
             version_n: number;
-            /** @description Confirmación de identidad para no repudio (doc 03 §4.1) */
+            /**
+             * @description Confirmación de identidad para no repudio (doc 03 §4.1). `metodo` y `token`
+             *     son OBLIGATORIOS: el step-up se exige y verifica server-side antes de retener,
+             *     así que un cuerpo sin ellos se rechaza (422).
+             */
             step_up: {
                 /** @enum {string} */
-                metodo?: "pin" | "biometria" | "otro";
-                token?: string;
+                metodo: "pin" | "biometria" | "otro";
+                token: string;
             };
         };
         AmendmentInput: {
@@ -974,6 +1032,16 @@ export interface components {
             resumen?: string;
             /** Format: date-time */
             creado_en?: string;
+        };
+        /** @description [embebido] Resultado de createReview. trust_score es null mientras published=false. */
+        RevisionResultado: {
+            id: string;
+            /** @enum {string} */
+            rol_evaluado: "cliente" | "profesional";
+            estrellas: number;
+            /** @description true cuando ambas partes evaluaron (publicación simultánea) */
+            published: boolean;
+            trust_score?: number | null;
         };
     };
     responses: {
@@ -1360,15 +1428,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Sala abierta */
+            /**
+             * @description Sala abierta. En el perfil embebido se devuelve la proyección compacta
+             *     `AcuerdoAbierto` (`{id, precio, estado}`); en producción, el `Acuerdo` completo.
+             */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Acuerdo"];
+                    "application/json": components["schemas"]["AcuerdoAbierto"] | components["schemas"]["Acuerdo"];
                 };
             };
+            404: components["responses"]["NotFound"];
         };
     };
     getAgreement: {
@@ -1484,7 +1556,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Aceptación registrada (y escrow retenido si ambas partes aceptaron) */
+            /** @description [producción] Aceptación registrada (escrow retenido) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1493,7 +1565,17 @@ export interface operations {
                     "application/json": components["schemas"]["Acuerdo"];
                 };
             };
-            /** @description Versión desactualizada o pago fallido */
+            /** @description [embebido/demo] Retención registrada */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetencionResultado"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Versión desactualizada o fondos insuficientes (PAGO_FALLIDO) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1560,12 +1642,31 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Entrega confirmada, escrow liberado */
+            /** @description [producción] Entrega confirmada, escrow liberado */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description [embebido/demo] Entrega confirmada, escrow liberado */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiberacionResultado"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description No hay retención que liberar (estado ≠ ACORDADO) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -1738,7 +1839,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Intento de abono iniciado (pendiente) */
+            /** @description [embebido/demo] Abono liquidado sincrónicamente */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopupResultado"];
+                };
+            };
+            /** @description [producción] Intento de abono iniciado (pendiente de webhook) */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -1748,6 +1858,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["MissingIdempotencyKey"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     withdraw: {
@@ -1938,14 +2049,29 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Evaluación registrada (oculta hasta publicación simultánea) */
+            /**
+             * @description Evaluación registrada. `published=false` mientras siga oculta (double-blind);
+             *     pasa a `true` y devuelve el `trust_score` recomputado al evaluar ambas partes.
+             */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RevisionResultado"];
+                };
             };
-            /** @description Servicio no pagado */
+            /** @description El evaluador no es parte del servicio (RN-7) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Servicio no pagado (no CERRADO) o evaluación duplicada (IN-4) */
             409: {
                 headers: {
                     [name: string]: unknown;
